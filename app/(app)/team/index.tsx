@@ -52,10 +52,10 @@ const roleColor = (role: OrgRole) => {
 };
 
 const memberName = (member: OrgMember) => {
-  const first = member.user.firstName?.trim();
-  const last = member.user.lastName?.trim();
+  const first = member.firstName?.trim();
+  const last = member.lastName?.trim();
   const full = [first, last].filter(Boolean).join(" ");
-  return full || member.user.email;
+  return full || member.email;
 };
 
 const initials = (member: OrgMember) => {
@@ -111,7 +111,7 @@ export default function TeamScreen() {
 
   // Role backend se aata hai; membership row hi source of truth hai
   const myMembership = useMemo(
-    () => members.find((m) => m.user.id === user?.id),
+    () => members.find((m) => m.userId === user?.id),
     [members, user?.id]
   );
 
@@ -209,8 +209,8 @@ export default function TeamScreen() {
   };
 
   const openMemberActions = (member: OrgMember) => {
-    const isMe = member.user.id === user?.id;
-    const isTargetOwner = member.role === "OWNER" || member.user.id === ownerId;
+    const isMe = member.userId === user?.id;
+    const isTargetOwner = member.role === "OWNER" || member.userId === ownerId;
 
     if (isMe || isTargetOwner) return;
 
@@ -233,12 +233,12 @@ export default function TeamScreen() {
     if (options.length === 0) return;
 
     options.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(memberName(member), member.user.email, options);
+    Alert.alert(memberName(member), member.email, options);
   };
 
   const renderMember = ({ item }: { item: OrgMember }) => {
-    const isMe = item.user.id === user?.id;
-    const isTargetOwner = item.role === "OWNER" || item.user.id === ownerId;
+    const isMe = item.userId === user?.id;
+    const isTargetOwner = item.role === "OWNER" || item.userId === ownerId;
     const actionable = !isMe && !isTargetOwner && (isOwner || canInvite);
 
     return (
@@ -263,7 +263,7 @@ export default function TeamScreen() {
             )}
           </View>
           <Text style={styles.email} numberOfLines={1}>
-            {item.user.email}
+            {item.email}
           </Text>
           {!item.joinedAt && (
             <Text style={styles.pendingText}>Invite pending</Text>

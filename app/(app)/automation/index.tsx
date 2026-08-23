@@ -48,6 +48,9 @@ export default function AutomationsScreen() {
   // ═══════════════════════════════════
 
   const fetchData = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (automationLocked) return;
     try {
       const [listRes, statsRes] = await Promise.allSettled([
         automationsApi.getAll(),
@@ -81,7 +84,7 @@ export default function AutomationsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [automationLocked]);
 
   useEffect(() => {
     fetchData();

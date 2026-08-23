@@ -49,6 +49,9 @@ export default function ChatbotListScreen() {
   // ═══════════════════════════════════
 
   const fetchChatbots = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (chatbotLocked) return;
     try {
       const params: any = {};
       if (search.trim()) params.search = search.trim();
@@ -66,7 +69,7 @@ export default function ChatbotListScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [search, statusFilter]);
+  }, [search, statusFilter, chatbotLocked]);
 
   useEffect(() => {
     fetchChatbots();

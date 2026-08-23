@@ -85,7 +85,13 @@
       ],
       "expo-sharing",
       "expo-video",
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "WabMeta needs access to your contacts so you can import them into your contact list."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

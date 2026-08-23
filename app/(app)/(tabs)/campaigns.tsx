@@ -67,6 +67,9 @@ export default function CampaignsScreen() {
   // ═══════════════════════════════════
 
   const fetchCampaigns = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (campaignsLocked) return;
     try {
       const params: any = {};
       if (statusFilter !== "all") params.status = statusFilter;
@@ -87,9 +90,12 @@ export default function CampaignsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [search, statusFilter]);
+  }, [search, statusFilter, campaignsLocked]);
 
   const fetchStats = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (campaignsLocked) return;
     try {
       const res = await campaignsApi.stats();
       if (res?.data?.success !== false && (res?.data?.data || res?.data)) {
@@ -98,7 +104,7 @@ export default function CampaignsScreen() {
     } catch (err) {
       console.error("Stats error:", err);
     }
-  }, []);
+  }, [campaignsLocked]);
 
   useEffect(() => {
     fetchCampaigns();

@@ -63,6 +63,9 @@ export default function InboxScreen() {
   // ═══════════════════════════════════
 
   const fetchConversations = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (inboxLocked) return;
     try {
       const params: any = { limit: 100 };
 
@@ -97,9 +100,12 @@ export default function InboxScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [search, filter]);
+  }, [search, filter, inboxLocked]);
 
   const fetchStats = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (inboxLocked) return;
     try {
       const res = await inboxApi.stats();
       if (res?.data?.success !== false && (res?.data?.data || res?.data)) {
@@ -108,9 +114,12 @@ export default function InboxScreen() {
     } catch (err) {
       console.error("Stats error:", err);
     }
-  }, []);
+  }, [inboxLocked]);
 
   const fetchLabels = useCallback(async () => {
+    // Locked plan par API 403 deti hai - call karne ka koi matlab nahi.
+    // (Hooks early return se pehle chalte hain, isliye guard yahan chahiye.)
+    if (inboxLocked) return;
     try {
       const res = await inboxApi.getLabels();
       if (res?.data?.success !== false && (res?.data?.data || Array.isArray(res?.data))) {
@@ -120,7 +129,7 @@ export default function InboxScreen() {
     } catch (err) {
       console.error("Labels error:", err);
     }
-  }, []);
+  }, [inboxLocked]);
 
   useEffect(() => {
     fetchConversations();

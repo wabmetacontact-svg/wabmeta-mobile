@@ -418,6 +418,24 @@ export default function ContactsScreen() {
                 style={styles.fabMenuItem}
                 onPress={() => {
                   setShowFABMenu(false);
+                  router.push("/(app)/contacts/sync-phone" as never);
+                }}
+              >
+                <View
+                  style={[
+                    styles.fabMenuIcon,
+                    { backgroundColor: Colors.primary },
+                  ]}
+                >
+                  <Ionicons name="phone-portrait" size={18} color="#fff" />
+                </View>
+                <Text style={styles.fabMenuLabel}>Sync Phone Contacts</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.fabMenuItem}
+                onPress={() => {
+                  setShowFABMenu(false);
                   router.push("/(app)/contacts/import" as never);
                 }}
               >

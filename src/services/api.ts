@@ -930,18 +930,18 @@ export const crm = {
 
 export type OrgRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
 
+// Backend member ko flat bhejta hai (organizations.service ka
+// OrganizationMemberResponse), nested user object nahi.
 export interface OrgMember {
   id: string;
+  userId: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  avatar?: string | null;
   role: OrgRole;
-  invitedAt?: string;
   joinedAt?: string | null;
-  user: {
-    id: string;
-    email: string;
-    firstName?: string | null;
-    lastName?: string | null;
-    avatar?: string | null;
-  };
+  invitedAt?: string | null;
 }
 
 export const organizations = {
