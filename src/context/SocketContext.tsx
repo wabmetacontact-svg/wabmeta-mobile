@@ -12,6 +12,7 @@ import React, {
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 import { AuthStorage } from "../utils/secureStorage";
+import { performTokenRefresh, AppEvents, APP_EVENT } from "../services/api";
 
 export const SOCKET_EVENTS = {
   // Inbox
@@ -39,6 +40,16 @@ export const SOCKET_ROOMS = {
   JOIN_ORG: "org:join",
   JOIN_USER: "user:join",
 } as const;
+
+const SOCKET_URL = (
+  process.env.EXPO_PUBLIC_API_URL || "https://api.wabmeta.com/api"
+).replace(/\/api\/?$/, "");
+
+// Handshake reject hone par kitni baar token refresh karke retry karein
+const MAX_AUTH_RETRIES = 3;
+
+const isAuthError = (message?: string): boolean =>
+  /token|auth|unauthor|jwt|expired|forbidden/i.test(message || "");
 
 interface SocketContextType {
   socket: Socket | null;
@@ -73,16 +84,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    let cancelled = false;
+    let authRetries = 0;
+
     const initSocket = async () => {
-      const token = await AuthStorage.getAccessToken();
-      const orgId = await AuthStorage.getOrgId();
+      const storedToken = await AuthStorage.getAccessToken();
+      if (!storedToken || cancelled) return;
 
-      if (!token) return;
-
-      const socket = io("https://api.wabmeta.com", {
-        auth: {
-          token,
-          organizationId: orgId,
+      const socket = io(SOCKET_URL, {
+        // Function form har connect/reconnect attempt par dobara chalta hai,
+        // isliye handshake hamesha fresh (non-expired) token bhejta hai.
+        auth: (cb: (data: object) => void) => {
+          void (async () => {
+            let token = await AuthStorage.getAccessToken();
+            try {
+              token = await performTokenRefresh();
+            } catch {
+              // Refresh fail -> jo stored hai usi se try karo
+            }
+            const organizationId = await AuthStorage.getOrgId();
+            cb({ token, organizationId });
+          })();
         },
         transports: ["websocket", "polling"],
         path: "/socket.io/",
@@ -92,10 +114,19 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         timeout: 45000,
       });
 
-      socket.on("connect", () => {
+      if (cancelled) {
+        socket.disconnect();
+        return;
+      }
+
+      socketRef.current = socket;
+
+      socket.on("connect", async () => {
         setIsConnected(true);
+        authRetries = 0;
         console.log("Socket connected:", socket.id);
 
+        const orgId = await AuthStorage.getOrgId();
         if (orgId) socket.emit(SOCKET_ROOMS.JOIN_ORG, orgId);
         if (user?.id) socket.emit(SOCKET_ROOMS.JOIN_USER, user.id);
       });
@@ -105,8 +136,27 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         console.log("Socket disconnected:", reason);
       });
 
-      socket.on("connect_error", (err) => {
+      socket.on("connect_error", async (err) => {
         console.error("Socket error:", err.message);
+
+        if (!isAuthError(err.message)) return;
+
+        // Auth reject: token refresh karke ek manual retry,
+        // kyunki server ne handshake par hi connection band kar diya hai.
+        if (authRetries >= MAX_AUTH_RETRIES) {
+          console.warn("Socket auth failed after retries, giving up");
+          return;
+        }
+        authRetries += 1;
+
+        try {
+          await performTokenRefresh();
+        } catch {
+          // performTokenRefresh 401 par khud FORCE_LOGOUT emit karta hai
+          return;
+        }
+
+        if (!cancelled && !socket.connected) socket.connect();
       });
 
       socket.on(SOCKET_EVENTS.FORCE_LOGOUT, async (data: any) => {
@@ -114,13 +164,20 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         socket.disconnect();
         await logout();
       });
-
-      socketRef.current = socket;
     };
+
+    // API layer ne token rotate kiya -> socket ko naye token par reconnect karo
+    const handleTokenRefreshed = () => {
+      const socket = socketRef.current;
+      if (socket && !socket.connected) socket.connect();
+    };
+    AppEvents.on(APP_EVENT.TOKEN_REFRESHED, handleTokenRefreshed);
 
     initSocket();
 
     return () => {
+      cancelled = true;
+      AppEvents.off(APP_EVENT.TOKEN_REFRESHED, handleTokenRefreshed);
       socketRef.current?.disconnect();
       socketRef.current = null;
       setIsConnected(false);

@@ -56,7 +56,7 @@ export const decodeJWTPayload = (token: string): any => {
     const base64 = token.split(".")[1]
       .replace(/-/g, "+")
       .replace(/_/g, "/");
-    
+
     const decoded = Buffer.from(base64, "base64").toString("utf8");
     return JSON.parse(decoded);
   } catch {
@@ -64,16 +64,37 @@ export const decodeJWTPayload = (token: string): any => {
   }
 };
 
+// --- Token Freshness --------------------------------------
+// isValidJWT sirf shape check karta hai (3 parts) - wo expiry nahi dekhta.
+// Ye actually exp claim check karta hai, thode margin ke saath, taki token
+// use hone se pehle hi expire na ho jaye.
+export const isTokenFresh = (
+  token: string | null,
+  marginMs = 30_000
+): boolean => {
+  if (!isValidJWT(token)) return false;
+
+  const payload = decodeJWTPayload(token as string);
+  if (!payload?.exp) return false;
+
+  return payload.exp * 1000 - Date.now() > marginMs;
+};
+
 // --- Auth Storage (High Level) ---------------------------
 export const AuthStorage = {
   async saveTokens(
-    accessToken: string, 
+    accessToken: string,
     refreshToken: string
   ): Promise<void> {
     await Promise.all([
       SecureStorage.setToken(TOKEN_KEYS.ACCESS, accessToken),
       SecureStorage.setToken(TOKEN_KEYS.REFRESH, refreshToken),
     ]);
+  },
+
+  // Sirf access token rotate karo - refresh token untouched rahe
+  async saveAccessToken(accessToken: string): Promise<void> {
+    await SecureStorage.setToken(TOKEN_KEYS.ACCESS, accessToken);
   },
 
   async getAccessToken(): Promise<string | null> {
@@ -88,7 +109,7 @@ export const AuthStorage = {
 
   async saveUser(user: unknown): Promise<void> {
     await AsyncStorage.setItem(
-      TOKEN_KEYS.USER, 
+      TOKEN_KEYS.USER,
       JSON.stringify(user)
     );
   },
@@ -104,7 +125,7 @@ export const AuthStorage = {
 
   async saveOrg(org: unknown): Promise<void> {
     await AsyncStorage.setItem(
-      TOKEN_KEYS.ORG, 
+      TOKEN_KEYS.ORG,
       JSON.stringify(org)
     );
   },

@@ -11,7 +11,7 @@ import { EventEmitter } from "events";
 import {
   AuthStorage,
   isValidJWT,
-  decodeJWTPayload,
+  isTokenFresh,
 } from "../utils/secureStorage";
 
 // --- App Events (window.dispatchEvent replacement) -------
@@ -136,19 +136,14 @@ export const performTokenRefresh = async (): Promise<string> => {
   const now = Date.now();
 
   const currentToken = await AuthStorage.getAccessToken();
-  if (currentToken && isValidJWT(currentToken)) {
-    const payload = decodeJWTPayload(currentToken);
-    if (payload && payload.exp) {
-      const timeLeft = payload.exp * 1000 - now;
-      if (timeLeft > 30_000) {
-        return currentToken;
-      }
-    }
-  }
+  if (isTokenFresh(currentToken)) return currentToken as string;
 
+  // Debounce window ke andar bhi stored token tabhi return karo jab wo
+  // sach mein fresh ho. Pehle yahan sirf isValidJWT (shape check) tha, to
+  // expired token bhi pass ho jata tha aur socket handshake us par fail hota.
   if (now - lastRefreshTimestamp < REFRESH_DEBOUNCE_MS) {
     const token = await AuthStorage.getAccessToken();
-    if (token && isValidJWT(token)) return token;
+    if (isTokenFresh(token)) return token as string;
   }
 
   if (isRefreshing) {
@@ -179,8 +174,15 @@ export const performTokenRefresh = async (): Promise<string> => {
       throw new Error("Invalid token from refresh");
     }
 
-    await AuthStorage.saveTokens(newAccessToken, newRefreshToken);
+    await AuthStorage.saveTokens(
+      newAccessToken,
+      newRefreshToken || refreshToken
+    );
     lastRefreshTimestamp = Date.now();
+
+    AppEvents.emit(APP_EVENT.TOKEN_REFRESHED, {
+      accessToken: newAccessToken,
+    });
 
     processQueue(null, newAccessToken);
     return newAccessToken;
@@ -209,7 +211,10 @@ api.interceptors.response.use(
   (response: AxiosResponse) => {
     const newToken = response.headers["x-new-access-token"];
     if (newToken && isValidJWT(newToken)) {
-      AuthStorage.saveTokens(newToken, "");
+      // saveTokens(newToken, "") refresh token ko blank kar deta tha
+      void AuthStorage.saveAccessToken(newToken).then(() => {
+        AppEvents.emit(APP_EVENT.TOKEN_REFRESHED, { accessToken: newToken });
+      });
       lastRefreshTimestamp = Date.now();
     }
     return response;
@@ -825,6 +830,10 @@ export const whatsapp = {
     to: string;
     message: string;
     tempId?: string;
+    // conversationId bhejna zaroori hai: iske bina backend har send par
+    // conversation dobara dhoondta/banata hai (2 extra DB round trip) aur
+    // 24h window check bhi skip ho jata hai.
+    conversationId?: string;
   }) => {
     const response = await api.post<ApiResponse>(
       "/whatsapp/send/text",
@@ -973,17 +982,30 @@ export const notifications = {
     api.delete<ApiResponse>("/notifications/push-token", { data: { token } }),
 };
 
-export const handleApiError = (error: any): string => {
-  if (axios.isAxiosError(error)) {
-    return (
-      error.response?.data?.message ||
-      error.message ||
-      "An error occurred"
-    );
+export const handleApiError = (
+  error: any,
+  fallback = "An error occurred"
+): string => {
+  const data = error?.response?.data;
+
+  // Zod validation errors: { message: "Validation failed", errors: [{ field, message }] }
+  // "Validation failed" user ko kuch nahi batata - actual field messages dikhao.
+  if (Array.isArray(data?.errors) && data.errors.length > 0) {
+    const details = data.errors
+      .map((e: any) => e?.message)
+      .filter(Boolean)
+      .join("\n");
+    if (details) return details;
   }
-  return error instanceof Error
-    ? error.message
-    : "An unknown error occurred";
+
+  return (
+    data?.message ||
+    data?.error ||
+    // Interceptor network/timeout errors ko plain object bana kar reject karta
+    // hai (koi .response nahi), isliye .message yahan bhi check karna zaroori hai
+    error?.message ||
+    fallback
+  );
 };
 
 export default api;

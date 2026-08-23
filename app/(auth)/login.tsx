@@ -38,6 +38,7 @@ export default function LoginScreen() {
   const [emailFocused, setEmailFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   const validate = () => {
     const newErrors: typeof errors = {};
@@ -50,14 +51,21 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    setFormError(null);
     if (!validate()) return;
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      // login() kabhi throw nahi karta - wo { success, error } return karta hai.
+      // Pehle yahan sirf try/catch tha, isliye har failure chup-chaap gayab ho
+      // jata tha aur user ko kuch dikhta hi nahi tha.
+      const result = await login(email.trim(), password);
+
+      if (!result?.success) {
+        setFormError(result?.error || "Login failed. Please try again.");
+      }
     } catch (error: any) {
-      Alert.alert(
-        "Login Failed",
-        error?.response?.data?.message || "Something went wrong"
+      setFormError(
+        error?.response?.data?.message || error?.message || "Something went wrong"
       );
     } finally {
       setLoading(false);
@@ -159,6 +167,7 @@ export default function LoginScreen() {
                       onChangeText={(text) => {
                         setEmail(text);
                         if (errors.email) setErrors({ ...errors, email: undefined });
+                        if (formError) setFormError(null);
                       }}
                       onFocus={() => setEmailFocused(true)}
                       onBlur={() => setEmailFocused(false)}
@@ -196,6 +205,7 @@ export default function LoginScreen() {
                         setPassword(text);
                         if (errors.password)
                           setErrors({ ...errors, password: undefined });
+                        if (formError) setFormError(null);
                       }}
                       onFocus={() => setPasswordFocused(true)}
                       onBlur={() => setPasswordFocused(false)}
@@ -228,6 +238,19 @@ export default function LoginScreen() {
                 >
                   <Text style={styles.forgotText}>Forgot Password?</Text>
                 </TouchableOpacity>
+
+                {/* Server / network error */}
+                {formError && (
+                  <View style={styles.formErrorBox}>
+                    <Ionicons
+                      name="alert-circle"
+                      size={16}
+                      color="#B91C1C"
+                      style={styles.formErrorIcon}
+                    />
+                    <Text style={styles.formErrorText}>{formError}</Text>
+                  </View>
+                )}
 
                 {/* Login Button */}
                 <TouchableOpacity
@@ -471,6 +494,27 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     marginTop: 4,
     marginLeft: 4,
+  },
+  formErrorBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 14,
+  },
+  formErrorIcon: {
+    marginRight: 8,
+    marginTop: 1,
+  },
+  formErrorText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: "#B91C1C",
   },
 
   // Forgot Password

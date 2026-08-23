@@ -298,6 +298,7 @@ export default function ChatScreen() {
           to: conversation.contact.phone,
           message: text,
           tempId,
+          conversationId: conversation.id,
         });
 
         if (response.data?.success) {

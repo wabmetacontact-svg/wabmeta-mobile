@@ -11,7 +11,12 @@ import React, {
   useRef,
 } from "react";
 import { router } from "expo-router";
-import { auth as authApi, AppEvents, APP_EVENT } from "../services/api";
+import {
+  auth as authApi,
+  AppEvents,
+  APP_EVENT,
+  handleApiError,
+} from "../services/api";
 import { AuthStorage } from "../utils/secureStorage";
 
 export interface User {
@@ -140,8 +145,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       router.replace("/(app)/(tabs)");
       return { success: true };
     } catch (err: any) {
-      const message =
-        err?.response?.data?.message || "Login failed";
+      const message = handleApiError(err, "Login failed");
       setError(message);
       return { success: false, error: message };
     }
