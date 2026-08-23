@@ -17,6 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { automations as automationsApi } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
+import { useAuth } from "../../../src/context/AuthContext";
+import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
+import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
 import { Automation, AutomationStats, AutomationTrigger } from "../../../src/types/automation";
 
 const TRIGGER_CONFIG: Record<AutomationTrigger, { icon: keyof typeof Ionicons.glyphMap; label: string; color: string }> = {
@@ -29,6 +32,9 @@ const TRIGGER_CONFIG: Record<AutomationTrigger, { icon: keyof typeof Ionicons.gl
 };
 
 export default function AutomationsScreen() {
+  const { organization } = useAuth();
+  const automationLocked = useFeatureLock("automation");
+
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [stats, setStats] = useState<AutomationStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,6 +168,17 @@ export default function AutomationsScreen() {
   // ═══════════════════════════════════
   // RENDER
   // ═══════════════════════════════════
+
+  if (automationLocked) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <LockedFeatureView
+          feature="automation"
+          planType={organization?.planType}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

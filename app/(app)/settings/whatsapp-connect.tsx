@@ -12,10 +12,16 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { Colors } from "../../../src/constants/colors";
+import { useAuth } from "../../../src/context/AuthContext";
+import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
+import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
 
 const SETTINGS_URL = "https://wabmeta.com/dashboard/settings";
 
 export default function WhatsAppConnectScreen() {
+  const { organization } = useAuth();
+  const connectionLocked = useFeatureLock("connection");
+
   const handleOpenBrowser = async () => {
     try {
       const canOpen = await Linking.canOpenURL(SETTINGS_URL);
@@ -33,6 +39,29 @@ export default function WhatsAppConnectScreen() {
       Alert.alert("Error", "Failed to open browser");
     }
   };
+
+  if (connectionLocked) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.iconBtn}
+          >
+            <Ionicons name="close" size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Connect WhatsApp</Text>
+          </View>
+          <View style={styles.iconBtn} />
+        </View>
+        <LockedFeatureView
+          feature="connection"
+          planType={organization?.planType}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>

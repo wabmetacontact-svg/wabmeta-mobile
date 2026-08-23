@@ -19,6 +19,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { campaigns as campaignsApi } from "../../../src/services/api";
 import { useSocket } from "../../../src/context/SocketContext";
 import { Colors } from "../../../src/constants/colors";
+import { useAuth } from "../../../src/context/AuthContext";
+import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
+import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
 import {
   Campaign,
   CampaignStats,
@@ -39,6 +42,8 @@ const STATUS_FILTERS = [
 
 export default function CampaignsScreen() {
   const { socket, isConnected } = useSocket();
+  const { organization } = useAuth();
+  const campaignsLocked = useFeatureLock("campaigns");
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [stats, setStats] = useState<CampaignStats | null>(null);
@@ -290,6 +295,17 @@ export default function CampaignsScreen() {
   // ═══════════════════════════════════
   // RENDER
   // ═══════════════════════════════════
+
+  if (campaignsLocked) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <LockedFeatureView
+          feature="campaigns"
+          planType={organization?.planType}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

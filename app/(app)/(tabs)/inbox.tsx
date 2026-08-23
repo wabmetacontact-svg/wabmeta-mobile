@@ -24,6 +24,9 @@ import {
   MessageStatusUpdate,
 } from "../../../src/hooks/useInboxSocket";
 import { Colors } from "../../../src/constants/colors";
+import { useAuth } from "../../../src/context/AuthContext";
+import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
+import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
 import {
   Conversation,
   InboxStats,
@@ -40,6 +43,9 @@ import {
 } from "../../../src/utils/inboxHelpers";
 
 export default function InboxScreen() {
+  const { organization } = useAuth();
+  const inboxLocked = useFeatureLock("inbox");
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
@@ -205,6 +211,18 @@ export default function InboxScreen() {
   };
 
   const handleOpenConversation = (conv: Conversation) => {
+    // Chat screen khulte hi server par read ho jati hai, par ye list wapas
+    // aane par re-mount nahi hoti - isliye badge yahin turant clear kar do.
+    // Server ka conversation:updated event bhi aayega; ye instant feedback
+    // ke liye hai taki socket slow ya disconnected ho tab bhi sahi dikhe.
+    if (conv.unreadCount > 0) {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === conv.id ? { ...c, unreadCount: 0, isRead: true } : c
+        )
+      );
+    }
+
     router.push(`/(app)/inbox/${conv.id}` as never);
   };
 
@@ -333,6 +351,14 @@ export default function InboxScreen() {
   );
 
   const renderSeparator = useCallback(() => <View style={styles.separator} />, []);
+
+  if (inboxLocked) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <LockedFeatureView feature="inbox" planType={organization?.planType} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

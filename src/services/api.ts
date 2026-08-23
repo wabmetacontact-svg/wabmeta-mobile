@@ -928,6 +928,48 @@ export const crm = {
   syncFromContacts: () => api.post<ApiResponse>("/crm/sync-from-contacts"),
 };
 
+export type OrgRole = "OWNER" | "ADMIN" | "MEMBER" | "VIEWER";
+
+export interface OrgMember {
+  id: string;
+  role: OrgRole;
+  invitedAt?: string;
+  joinedAt?: string | null;
+  user: {
+    id: string;
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    avatar?: string | null;
+  };
+}
+
+export const organizations = {
+  getAll: () => api.get<ApiResponse>("/organizations"),
+
+  getCurrent: () => api.get<ApiResponse>("/organizations/current"),
+
+  getById: (id: string) => api.get<ApiResponse>(`/organizations/${id}`),
+
+  update: (id: string, data: { name?: string; slug?: string }) =>
+    api.put<ApiResponse>(`/organizations/${id}`, data),
+
+  // memberId = OrganizationMember.id (user.id nahi)
+  inviteMember: (
+    id: string,
+    data: { email: string; role?: Exclude<OrgRole, "OWNER"> }
+  ) => api.post<ApiResponse>(`/organizations/${id}/members`, data),
+
+  updateMemberRole: (
+    id: string,
+    memberId: string,
+    role: Exclude<OrgRole, "OWNER">
+  ) => api.put<ApiResponse>(`/organizations/${id}/members/${memberId}`, { role }),
+
+  removeMember: (id: string, memberId: string) =>
+    api.delete<ApiResponse>(`/organizations/${id}/members/${memberId}`),
+};
+
 export const users = {
   getProfile: () => api.get<ApiResponse>("/users/profile"),
   getProfileFull: () => api.get<ApiResponse>("/users/profile/full"),

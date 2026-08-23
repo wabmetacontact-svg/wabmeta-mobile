@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "../../../src/context/AuthContext";
 import { Avatar } from "../../../src/components/common/Avatar";
 import { Colors } from "../../../src/constants/colors";
+import { useFeatureLocks } from "../../../src/hooks/useFeatureLock";
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
@@ -17,13 +18,15 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const locks = useFeatureLocks();
+
   const SETTINGS_SECTIONS = [
     {
       title: "Business & Integrations",
       items: [
-        { icon: "logo-whatsapp" as const, label: "WhatsApp Connection", route: "/(app)/settings/whatsapp", color: "#25D366" },
-        { icon: "chatbubble-ellipses-outline" as const, label: "Chatbot & AI", route: "/(app)/chatbot" },
-        { icon: "flash-outline" as const, label: "Automation Workflows", route: "/(app)/automation" },
+        { icon: "logo-whatsapp" as const, label: "WhatsApp Connection", route: "/(app)/settings/whatsapp", color: "#25D366", locked: locks.connection },
+        { icon: "chatbubble-ellipses-outline" as const, label: "Chatbot & AI", route: "/(app)/chatbot", locked: locks.chatbot },
+        { icon: "flash-outline" as const, label: "Automation Workflows", route: "/(app)/automation", locked: locks.automation },
         { icon: "document-text-outline" as const, label: "Message Templates", route: "/(app)/templates" },
         { icon: "people-circle-outline" as const, label: "Team Members", route: "/(app)/team" },
       ]
@@ -71,8 +74,30 @@ export default function SettingsScreen() {
                   style={[styles.itemRow, itemIdx < section.items.length - 1 && styles.itemBorder]}
                   onPress={() => router.push(item.route as any)}
                 >
-                  <Ionicons name={item.icon} size={22} color={(item as any).color || Colors.primary} style={styles.itemIcon} />
-                  <Text style={styles.itemLabel}>{item.label}</Text>
+                  <Ionicons
+                    name={item.icon}
+                    size={22}
+                    color={
+                      (item as any).locked
+                        ? Colors.textMuted
+                        : (item as any).color || Colors.primary
+                    }
+                    style={styles.itemIcon}
+                  />
+                  <Text
+                    style={[
+                      styles.itemLabel,
+                      (item as any).locked && { color: Colors.textSecondary },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                  {(item as any).locked && (
+                    <View style={styles.lockPill}>
+                      <Ionicons name="lock-closed" size={11} color={Colors.textMuted} />
+                      <Text style={styles.lockPillText}>Locked</Text>
+                    </View>
+                  )}
                   <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
                 </TouchableOpacity>
               ))}
@@ -92,6 +117,21 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
+  lockPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: Colors.borderLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginRight: 6,
+  },
+  lockPillText: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: Colors.textMuted,
+  },
   header: { paddingHorizontal: 20, paddingVertical: 14, backgroundColor: Colors.surface },
   headerTitle: { fontSize: 24, fontWeight: "700", color: Colors.textPrimary },
   profileCard: {

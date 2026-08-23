@@ -17,6 +17,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { chatbots as chatbotsApi } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
+import { useAuth } from "../../../src/context/AuthContext";
+import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
+import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
 import { Chatbot, ChatbotStatus } from "../../../src/types/chatbot";
 
 const STATUS_FILTERS: {
@@ -32,6 +35,8 @@ const STATUS_FILTERS: {
 
 export default function ChatbotListScreen() {
   const pathname = usePathname();
+  const { organization } = useAuth();
+  const chatbotLocked = useFeatureLock("chatbot");
   const [chatbots, setChatbots] = useState<Chatbot[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -195,6 +200,14 @@ export default function ChatbotListScreen() {
   // ═══════════════════════════════════
   // RENDER
   // ═══════════════════════════════════
+
+  if (chatbotLocked) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <LockedFeatureView feature="chatbot" planType={organization?.planType} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

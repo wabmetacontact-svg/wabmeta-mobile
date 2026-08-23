@@ -13,6 +13,7 @@ import React, {
 import { router } from "expo-router";
 import {
   auth as authApi,
+  organizations as orgApi,
   AppEvents,
   APP_EVENT,
   handleApiError,
@@ -40,6 +41,7 @@ export interface Organization {
   featureCampaignsLocked?: boolean;
   featureChatbotLocked?: boolean;
   featureAutomationLocked?: boolean;
+  featureConnectionLocked?: boolean;
 }
 
 export interface AuthContextType {
@@ -113,6 +115,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await AuthStorage.saveUser(freshUser);
       } catch {
         // Keep offline cached user if temporary failure
+      }
+
+      // Feature locks admin panel se badalte hain. Sirf login ke waqt saved
+      // org rakhne se user ko dobara login kiye bina naya plan nahi dikhta,
+      // isliye startup par org refresh kar lete hain.
+      try {
+        const orgRes = await orgApi.getCurrent();
+        const freshOrg = orgRes.data?.data;
+        if (freshOrg?.id) {
+          setOrganizationState(freshOrg as Organization);
+          await AuthStorage.saveOrg(freshOrg);
+        }
+      } catch {
+        // Cached org se hi kaam chalao
       }
     } catch (err) {
       console.error("Session restore error:", err);

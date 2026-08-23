@@ -188,8 +188,12 @@ export function TemplateModal({
         whatsappAccountId,
         to: contactPhone,
         templateName: selectedTemplate.name,
-        templateLanguage: selectedTemplate.language,
-        components,
+        // Backend "language" aur "parameters" padhta hai. Pehle yahan se
+        // "templateLanguage"/"components" jaate the, to dono undefined ho jate
+        // the - Meta ko language: {} milta tha ("missing: code" error) aur
+        // template ke variables bhi chup-chaap drop ho jate the.
+        language: selectedTemplate.language,
+        parameters: components,
         conversationId,
       });
 

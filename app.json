@@ -83,7 +83,9 @@
           "cameraPermission": "WabMeta needs camera access."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-video",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

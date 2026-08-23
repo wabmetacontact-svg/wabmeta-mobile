@@ -64,6 +64,15 @@ export const decodeJWTPayload = (token: string): any => {
   }
 };
 
+// --- Sync Token Cache -------------------------------------
+// SecureStore async hai, lekin kuch jagah token synchronously chahiye hota
+// hai - jaise render ke dauraan authenticated media URL banate waqt.
+// Ye in-memory mirror har save/read par refresh hota rehta hai (axios
+// interceptor har request par getAccessToken() call karta hai).
+let cachedAccessToken: string | null = null;
+
+export const getCachedAccessToken = (): string | null => cachedAccessToken;
+
 // --- Token Freshness --------------------------------------
 // isValidJWT sirf shape check karta hai (3 parts) - wo expiry nahi dekhta.
 // Ye actually exp claim check karta hai, thode margin ke saath, taki token
@@ -86,6 +95,7 @@ export const AuthStorage = {
     accessToken: string,
     refreshToken: string
   ): Promise<void> {
+    cachedAccessToken = accessToken;
     await Promise.all([
       SecureStorage.setToken(TOKEN_KEYS.ACCESS, accessToken),
       SecureStorage.setToken(TOKEN_KEYS.REFRESH, refreshToken),
@@ -94,12 +104,15 @@ export const AuthStorage = {
 
   // Sirf access token rotate karo - refresh token untouched rahe
   async saveAccessToken(accessToken: string): Promise<void> {
+    cachedAccessToken = accessToken;
     await SecureStorage.setToken(TOKEN_KEYS.ACCESS, accessToken);
   },
 
   async getAccessToken(): Promise<string | null> {
     const token = await SecureStorage.getToken(TOKEN_KEYS.ACCESS);
-    return isValidJWT(token) ? token : null;
+    const valid = isValidJWT(token) ? token : null;
+    cachedAccessToken = valid;
+    return valid;
   },
 
   async getRefreshToken(): Promise<string | null> {
@@ -145,6 +158,7 @@ export const AuthStorage = {
   },
 
   async clearAll(): Promise<void> {
+    cachedAccessToken = null;
     await Promise.all([
       SecureStorage.removeToken(TOKEN_KEYS.ACCESS),
       SecureStorage.removeToken(TOKEN_KEYS.REFRESH),

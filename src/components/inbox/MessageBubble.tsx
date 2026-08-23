@@ -1,5 +1,5 @@
 // src/components/inbox/MessageBubble.tsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -14,19 +14,47 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useVideoPlayer, VideoView } from "expo-video";
+import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
+import { getCachedAccessToken } from "../../utils/secureStorage";
 import { Colors } from "../../constants/colors";
 import { Message } from "../../types/inbox";
 import { formatMessageTime, formatFileSize } from "../../utils/inboxHelpers";
 
-// SafeAudio / SafeVideo placeholders (expo-av removed for React Native New Architecture compatibility)
-const SafeAudio: any = null;
-const SafeVideo: any = null;
-const SafeResizeMode: any = null;
-
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || "https://api.wabmeta.com/api";
+
+// Media ka playable URL. Backup complete ho chuka ho to message.mediaUrl
+// permanent Cloudinary/R2 URL hota hai; warna backend proxy se stream karte
+// hain. Proxy authenticate ke peeche hai aur <Image>/<VideoView>/Linking koi
+// bhi Authorization header nahi bhejte, isliye ?token= use karte hain
+// (backend extractToken -> req.query.token support karta hai).
+const buildMediaSrc = (message: Message): string | null => {
+  const url = message.mediaUrl;
+  if (!url) return null;
+
+  if (url.startsWith("data:")) return url;
+  if (url.includes("cloudinary.com")) return url;
+
+  if (
+    url.startsWith("https://") &&
+    !url.includes("lookaside.fbsbx.com") &&
+    !url.includes("mmg.whatsapp.net") &&
+    !url.includes("scontent")
+  ) {
+    return url;
+  }
+
+  if (message.mediaId && /^\d+$/.test(message.mediaId.trim())) {
+    const proxyUrl = `${API_BASE}/inbox/media/${message.mediaId.trim()}`;
+    const token = getCachedAccessToken();
+    return token ? `${proxyUrl}?token=${encodeURIComponent(token)}` : proxyUrl;
+  }
+
+  return url;
+};
 
 interface Props {
   message: Message;
@@ -49,6 +77,7 @@ export const MessageBubble = React.memo(function MessageBubble({
   onStar,
 }: Props) {
   const [showFullImage, setShowFullImage] = useState(false);
+  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageError, setImageError] = useState(false);
   const [downloadingDoc, setDownloadingDoc] = useState(false);
@@ -59,33 +88,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     message.content === "[revoke]" || message.content === "[Revoke]";
 
   // Get media URL
-  const getMediaSrc = (): string | null => {
-    const url = message.mediaUrl;
-    if (!url) return null;
-
-    // Data URL
-    if (url.startsWith("data:")) return url;
-
-    // Cloudinary
-    if (url.includes("cloudinary.com")) return url;
-
-    // Other HTTPS (not Meta direct)
-    if (
-      url.startsWith("https://") &&
-      !url.includes("lookaside.fbsbx.com") &&
-      !url.includes("mmg.whatsapp.net") &&
-      !url.includes("scontent")
-    ) {
-      return url;
-    }
-
-    // Media ID - proxy through backend
-    if (message.mediaId && /^\d+$/.test(message.mediaId.trim())) {
-      return `${API_BASE}/inbox/media/${message.mediaId.trim()}`;
-    }
-
-    return url;
-  };
+  const getMediaSrc = (): string | null => buildMediaSrc(message);
 
   // Status ticks
   const renderStatus = () => {
@@ -274,39 +277,34 @@ export const MessageBubble = React.memo(function MessageBubble({
   const renderVideo = () => {
     const src = getMediaSrc();
 
-    const handleOpenVideo = () => {
-      if (src) {
-        Linking.openURL(src).catch(() => {
-          Alert.alert("Error", "Cannot open video URL");
-        });
-      }
-    };
-
-    if (SafeVideo && src) {
-      return (
-        <View style={styles.videoContainer}>
-          <SafeVideo
-            source={{ uri: src }}
-            style={styles.video}
-            useNativeControls
-            resizeMode={SafeResizeMode?.CONTAIN || "contain"}
-            isLooping={false}
-          />
-        </View>
-      );
-    }
-
     return (
-      <TouchableOpacity
-        style={styles.videoFallback}
-        onPress={handleOpenVideo}
-        activeOpacity={0.8}
-      >
-        <View style={styles.videoPlayCircle}>
-          <Ionicons name="play" size={28} color="#fff" />
-        </View>
-        <Text style={styles.videoFallbackText}>Tap to play video</Text>
-      </TouchableOpacity>
+      <View>
+        <TouchableOpacity
+          style={styles.videoFallback}
+          onPress={() => {
+            if (!src) {
+              Alert.alert("Video", "Video abhi available nahi hai");
+              return;
+            }
+            setShowVideoPlayer(true);
+          }}
+          activeOpacity={0.8}
+        >
+          <View style={styles.videoPlayCircle}>
+            <Ionicons name="play" size={28} color="#fff" />
+          </View>
+          <Text style={styles.videoFallbackText}>Tap to play video</Text>
+        </TouchableOpacity>
+
+        {/* Player sirf tap par mount hota hai - list ke har video message ke
+            liye native player pehle se banana mehnga padta hai */}
+        {showVideoPlayer && src && (
+          <VideoPlayerModal
+            uri={src}
+            onClose={() => setShowVideoPlayer(false)}
+          />
+        )}
+      </View>
     );
   };
 
@@ -611,114 +609,82 @@ export const MessageBubble = React.memo(function MessageBubble({
 });
 
 // ═══════════════════════════════════
-// AUDIO PLAYER
+// VIDEO PLAYER (fullscreen, expo-video)
 // ═══════════════════════════════════
 
-function AudioPlayer({
-  message,
-  isOutbound,
+function VideoPlayerModal({
+  uri,
+  onClose,
 }: {
-  message: Message;
-  isOutbound: boolean;
+  uri: string;
+  onClose: () => void;
 }) {
-  const [sound, setSound] = useState<any>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [duration, setDuration] = useState(0);
-  const [position, setPosition] = useState(0);
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.play();
+  });
 
-  const getMediaSrc = (): string | null => {
-    const url = message.mediaUrl;
-    if (!url) return null;
-    if (url.includes("cloudinary.com")) return url;
-    if (message.mediaId && /^\d+$/.test(message.mediaId.trim())) {
-      return `${API_BASE}/inbox/media/${message.mediaId.trim()}`;
-    }
-    return url;
-  };
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.fullscreenModal}>
+        <TouchableOpacity style={styles.closeFullscreen} onPress={onClose}>
+          <Ionicons name="close" size={28} color="#fff" />
+        </TouchableOpacity>
 
-  const playPause = async () => {
-    const src = getMediaSrc();
-    if (!src) return;
+        <VideoView
+          player={player}
+          style={styles.fullscreenVideo}
+          nativeControls
+          contentFit="contain"
+          fullscreenOptions={{ enable: true }}
+          allowsPictureInPicture
+        />
+      </View>
+    </Modal>
+  );
+}
 
-    if (!SafeAudio) {
-      // Fallback if native Audio module not linked in runtime
-      Linking.openURL(src).catch(() => {
-        Alert.alert("Audio", "Cannot play audio on this device");
-      });
-      return;
-    }
+// ═══════════════════════════════════
+// AUDIO PLAYER (expo-audio)
+// ═══════════════════════════════════
 
-    try {
-      if (sound) {
-        if (isPlaying) {
-          await sound.pauseAsync();
-        } else {
-          await sound.playAsync();
-        }
-        setIsPlaying(!isPlaying);
-      } else {
-        const { sound: newSound } = await SafeAudio.Sound.createAsync(
-          { uri: src },
-          { shouldPlay: true },
-          (status: any) => {
-            if (status.isLoaded) {
-              setDuration(status.durationMillis || 0);
-              setPosition(status.positionMillis || 0);
-              setIsPlaying(status.isPlaying);
-              if (status.didJustFinish) {
-                setIsPlaying(false);
-                setPosition(0);
-              }
-            }
-          }
-        );
-        setSound(newSound);
-        setIsPlaying(true);
-      }
-    } catch (err) {
-      console.warn("Audio play error:", err);
-      // Fallback
-      Linking.openURL(src).catch(() => {});
-    }
-  };
+const formatAudioTime = (seconds: number) => {
+  const total = Math.max(0, Math.floor(seconds || 0));
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+};
 
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync().catch(() => {});
-      }
-    };
-  }, [sound]);
-
-  const format = (ms: number) => {
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  };
+// Waveform UI - dono states (tap se pehle aur playback ke dauraan) yahi use
+// karte hain, taki dikhne mein koi farak na aaye
+function AudioShell({
+  isOutbound,
+  playing,
+  progress,
+  timeLabel,
+  onPress,
+}: {
+  isOutbound: boolean;
+  playing: boolean;
+  progress: number;
+  timeLabel: string;
+  onPress: () => void;
+}) {
+  const accent = isOutbound ? "#0A6B5C" : Colors.primary;
 
   return (
     <View style={audioStyles.container}>
       <TouchableOpacity
-        onPress={playPause}
-        style={[
-          audioStyles.playBtn,
-          { backgroundColor: isOutbound ? "#0A6B5C" : Colors.primary },
-        ]}
+        onPress={onPress}
+        style={[audioStyles.playBtn, { backgroundColor: accent }]}
       >
-        <Ionicons
-          name={isPlaying ? "pause" : "play"}
-          size={18}
-          color="#fff"
-        />
+        <Ionicons name={playing ? "pause" : "play"} size={18} color="#fff" />
       </TouchableOpacity>
 
       <View style={audioStyles.waveform}>
         <View style={audioStyles.waveContainer}>
           {Array.from({ length: 18 }).map((_, i) => {
-            const isActive =
-              duration > 0 &&
-              i / 18 <= position / duration;
+            const isActive = i / 18 <= progress;
             return (
               <View
                 key={i}
@@ -727,9 +693,7 @@ function AudioPlayer({
                   {
                     height: 6 + Math.abs(Math.sin(i * 0.5)) * 12,
                     backgroundColor: isActive
-                      ? isOutbound
-                        ? "#0A6B5C"
-                        : Colors.primary
+                      ? accent
                       : isOutbound
                       ? "rgba(0,0,0,0.3)"
                       : Colors.textMuted,
@@ -755,13 +719,80 @@ function AudioPlayer({
               },
             ]}
           >
-            {duration > 0
-              ? format(isPlaying ? position : duration)
-              : "0:00"}
+            {timeLabel}
           </Text>
         </View>
       </View>
     </View>
+  );
+}
+
+function AudioPlayer({
+  message,
+  isOutbound,
+}: {
+  message: Message;
+  isOutbound: boolean;
+}) {
+  const [started, setStarted] = useState(false);
+  const mediaSrc = buildMediaSrc(message);
+
+  // Native player tabhi banao jab user pehli baar play kare. Ek chat mein kai
+  // voice notes ho sakti hain - sabke liye pehle se player rakhna waste hai.
+  if (started && mediaSrc) {
+    return <ActiveAudioPlayer uri={mediaSrc} isOutbound={isOutbound} />;
+  }
+
+  return (
+    <AudioShell
+      isOutbound={isOutbound}
+      playing={false}
+      progress={0}
+      timeLabel="00:00"
+      onPress={() => {
+        if (!mediaSrc) {
+          Alert.alert("Audio", "Audio abhi available nahi hai");
+          return;
+        }
+        setStarted(true);
+      }}
+    />
+  );
+}
+
+function ActiveAudioPlayer({
+  uri,
+  isOutbound,
+}: {
+  uri: string;
+  isOutbound: boolean;
+}) {
+  const player = useAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
+  const autoStarted = useRef(false);
+
+  // Load hone ke baad hi play karo - source ready hone se pehle play()
+  // call karne par kuch devices par kuch nahi hota
+  useEffect(() => {
+    if (!autoStarted.current && status.isLoaded) {
+      autoStarted.current = true;
+      player.play();
+    }
+  }, [status.isLoaded, player]);
+
+  const duration = status.duration || 0;
+  const progress = duration > 0 ? status.currentTime / duration : 0;
+
+  return (
+    <AudioShell
+      isOutbound={isOutbound}
+      playing={status.playing}
+      progress={progress}
+      timeLabel={formatAudioTime(
+        status.currentTime > 0 ? status.currentTime : duration
+      )}
+      onPress={() => (status.playing ? player.pause() : player.play())}
+    />
   );
 }
 
@@ -957,6 +988,10 @@ const styles = StyleSheet.create({
   fullscreenImage: {
     width: SCREEN_W,
     height: SCREEN_H,
+  },
+  fullscreenVideo: {
+    width: SCREEN_W,
+    height: SCREEN_H * 0.6,
   },
 
   // Video
