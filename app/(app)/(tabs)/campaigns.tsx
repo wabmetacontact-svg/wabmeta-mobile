@@ -16,7 +16,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { campaigns as campaignsApi } from "../../../src/services/api";
+import {
+  campaigns as campaignsApi,
+  handleApiError,
+} from "../../../src/services/api";
 import { useSocket } from "../../../src/context/SocketContext";
 import { Colors } from "../../../src/constants/colors";
 import { useAuth } from "../../../src/context/AuthContext";
@@ -233,7 +236,9 @@ export default function CampaignsScreen() {
       fetchCampaigns();
       fetchStats();
     } catch (e: any) {
-      const msg = e?.response?.data?.message || "Failed to start";
+      // Interceptor ke network/timeout errors mein .response nahi hota -
+      // handleApiError un dono shapes ko handle karta hai
+      const msg = handleApiError(e, "Failed to start");
       if (msg.includes("WALLET_")) {
         Alert.alert(
           "Wallet Balance Low",

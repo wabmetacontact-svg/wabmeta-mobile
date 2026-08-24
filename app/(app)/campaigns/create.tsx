@@ -18,6 +18,7 @@ import {
   contacts as contactsApi,
   campaigns as campaignsApi,
   whatsapp as whatsappApi,
+  handleApiError,
 } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
 import { CampaignFormData, Template } from "../../../src/types/campaign";
@@ -510,7 +511,12 @@ export default function CreateCampaignScreen() {
         },
       ]);
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Failed to start";
+      // handleApiError use karo, sirf response.data.message nahi. Interceptor
+      // network/timeout errors ko plain object bana kar reject karta hai
+      // (jisme .response hota hi nahi), to asli wajah - 'Request timed out.'
+      // ya 'No internet connection.' - yahan gayab ho jati thi aur user ko
+      // sirf bemtlab ka 'Failed to start' dikhta tha.
+      const msg = handleApiError(err, "Failed to start");
       if (msg && typeof msg === "string" && msg.includes("WALLET_")) {
         Alert.alert("Wallet Balance Low", "Please top up your wallet", [
           { text: "Cancel", style: "cancel" },

@@ -40,7 +40,9 @@ const getQualityConfig = (rating: string | null) => {
 };
 
 const getMessagingTierLabel = (tier: string | null): string => {
-  if (!tier) return "Not set";
+  // Tier abhi Meta se sync nahi hua. Backend background mein sync trigger
+  // karta hai, isliye refresh karne par aa jayega.
+  if (!tier) return "Syncing...";
   const tierMap: Record<string, string> = {
     TIER_50: "50/day",
     TIER_250: "250/day",
@@ -627,16 +629,53 @@ function AccountCard({
           </View>
         </View>
 
-        {/* Tier */}
+        {/* Messaging limit + 24h usage */}
         <View style={styles.metricCard}>
           <View style={styles.metricHeader}>
             <Ionicons name="pulse" size={12} color={Colors.textMuted} />
-            <Text style={styles.metricLabel}>Tier</Text>
+            <Text style={styles.metricLabel}>Limit</Text>
           </View>
           <Text style={styles.metricValue}>
             {getMessagingTierLabel(account.messagingLimit)}
           </Text>
-          <Text style={styles.metricSubtext}>per day</Text>
+          <Text style={styles.metricSubtext}>
+            {typeof account.messagingUsed24h === "number"
+              ? account.messagingLimitPerDay == null
+                ? `${account.messagingUsed24h} used · 24h`
+                : `${account.messagingUsed24h}/${account.messagingLimitPerDay} used · 24h`
+              : "per day"}
+          </Text>
+
+          {/* Usage bar - sirf jab limit finite ho */}
+          {typeof account.messagingUsed24h === "number" &&
+            typeof account.messagingLimitPerDay === "number" &&
+            account.messagingLimitPerDay > 0 && (
+              <View style={styles.usageTrack}>
+                <View
+                  style={[
+                    styles.usageFill,
+                    {
+                      width: `${Math.min(
+                        100,
+                        (account.messagingUsed24h /
+                          account.messagingLimitPerDay) *
+                          100
+                      )}%`,
+                      backgroundColor:
+                        account.messagingUsed24h /
+                          account.messagingLimitPerDay >=
+                        0.9
+                          ? Colors.error
+                          : account.messagingUsed24h /
+                              account.messagingLimitPerDay >=
+                            0.7
+                          ? Colors.warning
+                          : Colors.success,
+                    },
+                  ]}
+                />
+              </View>
+            )}
         </View>
 
         {/* Verification */}
@@ -1030,6 +1069,17 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: Colors.textMuted,
     marginTop: 2,
+  },
+  usageTrack: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: Colors.borderLight,
+    marginTop: 6,
+    overflow: "hidden",
+  },
+  usageFill: {
+    height: "100%",
+    borderRadius: 2,
   },
   qualityBadge: {
     flexDirection: "row",
