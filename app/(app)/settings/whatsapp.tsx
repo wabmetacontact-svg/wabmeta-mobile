@@ -39,10 +39,17 @@ const getQualityConfig = (rating: string | null) => {
   }
 };
 
-const getMessagingTierLabel = (tier: string | null): string => {
-  // Tier abhi Meta se sync nahi hua. Backend background mein sync trigger
-  // karta hai, isliye refresh karne par aa jayega.
-  if (!tier) return "Syncing...";
+const getMessagingTierLabel = (
+  tier: string | null,
+  status?: "ASSIGNED" | "PENDING" | "SYNCING"
+): string => {
+  if (!tier) {
+    // Meta ne tier assign hi nahi kiya (naya / unverified number) - ise
+    // "Syncing..." dikhana jhooth hoga, wo kabhi aayega hi nahi jab tak
+    // Meta khud assign na kare.
+    if (status === "PENDING") return "Not available yet";
+    return "Syncing...";
+  }
   const tierMap: Record<string, string> = {
     TIER_50: "50/day",
     TIER_250: "250/day",
@@ -636,10 +643,15 @@ function AccountCard({
             <Text style={styles.metricLabel}>Limit</Text>
           </View>
           <Text style={styles.metricValue}>
-            {getMessagingTierLabel(account.messagingLimit)}
+            {getMessagingTierLabel(
+              account.messagingLimit,
+              account.messagingTierStatus
+            )}
           </Text>
           <Text style={styles.metricSubtext}>
-            {typeof account.messagingUsed24h === "number"
+            {account.messagingTierStatus === "PENDING"
+              ? "Meta assigns after first sends"
+              : typeof account.messagingUsed24h === "number"
               ? account.messagingLimitPerDay == null
                 ? `${account.messagingUsed24h} used · 24h`
                 : `${account.messagingUsed24h}/${account.messagingLimitPerDay} used · 24h`

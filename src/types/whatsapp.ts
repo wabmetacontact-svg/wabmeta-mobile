@@ -23,6 +23,10 @@ export interface WhatsAppAccount {
   messagingLimitPerDay?: number | null;
   messagingUsed24h?: number;
   messagingRemaining?: number | null;
+  // ASSIGNED = Meta ne tier de diya | PENDING = sync ho chuka par Meta ne
+  // abhi tier assign nahi kiya (naye number par normal hai) | SYNCING = is
+  // account ka sync abhi chala hi nahi
+  messagingTierStatus?: "ASSIGNED" | "PENDING" | "SYNCING";
   hasAccessToken: boolean;
   createdAt: string;
   updatedAt: string;
