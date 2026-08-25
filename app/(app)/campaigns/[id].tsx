@@ -24,6 +24,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { campaigns as campaignsApi } from "../../../src/services/api";
 import { useCampaignRealtime } from "../../../src/hooks/useCampaignRealtime";
 import { Colors } from "../../../src/constants/colors";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import {
   Campaign,
   CampaignContact,
@@ -74,10 +75,17 @@ const getDisplayName = (c: CampaignContact): string => {
 export default function CampaignDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [campaign, setCampaign] = useState<Campaign | null>(null);
-  const [stats, setStats] = useState<DetailedStats | null>(null);
+  // Cache se seed - dobara khole to turant dikhe, phir background mein refresh
+  const [campaign, setCampaign] = useState<Campaign | null>(
+    () => cacheGet<Campaign>(`campaign:${id}`) ?? null
+  );
+  const [stats, setStats] = useState<DetailedStats | null>(
+    () => cacheGet<DetailedStats>(`campaignStats:${id}`) ?? null
+  );
   const [contacts, setContacts] = useState<CampaignContact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Campaign>(`campaign:${id}`)
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [contactsLoading, setContactsLoading] = useState(false);
 
@@ -160,6 +168,7 @@ export default function CampaignDetailScreen() {
       if (res?.data?.success !== false && (res?.data?.data || res?.data)) {
         const campaignData = (res.data?.data as any)?.campaign || res.data?.data || res.data;
         setCampaign(campaignData as Campaign);
+        cacheSet(`campaign:${id}`, campaignData);
       }
     } catch (err) {
       console.error("Fetch campaign error:", err);
@@ -171,7 +180,9 @@ export default function CampaignDetailScreen() {
     try {
       const res = await campaignsApi.getDetailedStats(id);
       if (res?.data?.success !== false && (res?.data?.data || res?.data)) {
-        setStats((res.data?.data || res.data) as DetailedStats);
+        const statsData = (res.data?.data || res.data) as DetailedStats;
+        setStats(statsData);
+        cacheSet(`campaignStats:${id}`, statsData);
         lastStatsRef.current = Date.now();
       }
     } catch (err) {
@@ -215,7 +226,8 @@ export default function CampaignDetailScreen() {
         setLoading(false);
         return;
       }
-      setLoading(true);
+      // Cache mein pehle se hai to spinner mat dikhao - chupchap refresh
+      if (!cacheGet<Campaign>(`campaign:${id}`)) setLoading(true);
       resetStats();
       await Promise.all([fetchCampaign(), fetchStats()]);
       setLoading(false);
@@ -364,14 +376,7 @@ export default function CampaignDetailScreen() {
   // RENDER
   // ═══════════════════════════════════
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
+  // Poori screen block karne ke bajay header rehta hai, spinner sirf body mein
   if (!campaign) {
     return (
       <SafeAreaView style={styles.container}>
@@ -380,13 +385,19 @@ export default function CampaignDetailScreen() {
             <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
           </TouchableOpacity>
         </View>
-        <View style={styles.emptyWrap}>
-          <Ionicons name="megaphone-outline" size={48} color={Colors.textMuted} />
-          <Text style={styles.errorTitle}>Campaign Not Found</Text>
-          <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-            <Text style={styles.backBtnText}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
+        {loading ? (
+          <View style={styles.emptyWrap}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="megaphone-outline" size={48} color={Colors.textMuted} />
+            <Text style={styles.errorTitle}>Campaign Not Found</Text>
+            <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+              <Text style={styles.backBtnText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </SafeAreaView>
     );
   }
@@ -399,8 +410,15 @@ export default function CampaignDetailScreen() {
   const failed = displayStats?.failed || 0;
   const pending = displayStats?.pending || 0;
 
+  // sent/delivered/read alag-alag buckets hain - delivered ko chhod dene se
+  // poori ho chuki campaign 0% dikhati thi
   const progressPercent =
-    total > 0 ? Math.min(100, Math.round(((sent + failed) / total) * 100)) : 0;
+    total > 0
+      ? Math.min(
+          100,
+          Math.round(((sent + delivered + read + failed) / total) * 100)
+        )
+      : 0;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

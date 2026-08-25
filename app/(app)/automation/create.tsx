@@ -508,14 +508,7 @@ export default function CreateAutomationScreen() {
   // RENDER
   // ═══════════════════════════════════
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
+  // Header turant, spinner sirf form wale area mein
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
@@ -530,7 +523,7 @@ export default function CreateAutomationScreen() {
         </View>
         <TouchableOpacity
           onPress={handleSave}
-          disabled={saving}
+          disabled={saving || loading}
           style={styles.saveBtnTop}
         >
           {saving ? (
@@ -541,6 +534,11 @@ export default function CreateAutomationScreen() {
         </TouchableOpacity>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
@@ -768,6 +766,7 @@ export default function CreateAutomationScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 }

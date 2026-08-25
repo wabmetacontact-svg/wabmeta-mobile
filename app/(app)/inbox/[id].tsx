@@ -17,12 +17,18 @@ import {
   KeyboardAvoidingView,
   Image,
   Keyboard,
+  Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import { inbox as inboxApi, whatsapp as whatsappApi } from "../../../src/services/api";
+import {
+  inbox as inboxApi,
+  whatsapp as whatsappApi,
+  handleApiError,
+} from "../../../src/services/api";
 import {
   useInboxSocket,
   InboundMessage,
@@ -52,11 +58,30 @@ let cachedAccountId: string | null = null;
 let accountFetchPromise: Promise<string | null> | null = null;
 
 export default function ChatScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const {
+    id,
+    name: paramName,
+    phone: paramPhone,
+  } = useLocalSearchParams<{ id: string; name?: string; phone?: string }>();
   const insets = useSafeAreaInsets();
 
-  const [conversation, setConversation] = useState<Conversation | null>(null);
+  const [conversation, setConversation] = useState<Conversation | null>(
+    () => cacheGet<Conversation>(`conv:${id}`) ?? null
+  );
+
+  // Fetch poora hua ya nahi - "not found" sirf tab dikhana hai jab server ne
+  // sach mein kuch na diya ho, sirf isliye nahi ki abhi load ho raha hai
+  const [convChecked, setConvChecked] = useState(
+    () => !!cacheGet<Conversation>(`conv:${id}`)
+  );
   // Pichhli baar ke messages turant dikha do, fresh background mein aayenge
+  // Forward - kaunsa message, aur picker ki state
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+  const [forwardList, setForwardList] = useState<any[]>([]);
+  const [forwardSearch, setForwardSearch] = useState("");
+  const [forwardLoading, setForwardLoading] = useState(false);
+  const [forwardingTo, setForwardingTo] = useState<string | null>(null);
+
   const [messages, setMessages] = useState<Message[]>(
     () => cacheGet<Message[]>(`chat:${id}`) ?? []
   );
@@ -100,12 +125,16 @@ export default function ChatScreen() {
     try {
       const res = await inboxApi.getConversation(id);
       if (res?.data?.success !== false && (res?.data?.data || res?.data)) {
-        setConversation((res.data?.data || res.data) as Conversation);
+        const conv = (res.data?.data || res.data) as Conversation;
+        cacheSet(`conv:${id}`, conv);
+        setConversation(conv);
       }
     } catch (err) {
       console.error("Fetch conversation error:", err);
       Alert.alert("Error", "Failed to load conversation");
       router.back();
+    } finally {
+      setConvChecked(true);
     }
   }, [id]);
 
@@ -455,6 +484,68 @@ export default function ChatScreen() {
   // MESSAGE ACTIONS
   // ═══════════════════════════════════
 
+  // ═══════════════════════════════════
+  // FORWARD
+  // ═══════════════════════════════════
+
+  const openForward = useCallback(async (msg: Message) => {
+    setForwardMsg(msg);
+    setForwardSearch("");
+    setForwardLoading(true);
+
+    try {
+      const res = await inboxApi.getConversations({ limit: 100 });
+      const data = res.data?.data ?? res.data;
+      const list = Array.isArray(data) ? data : (data as any)?.conversations || [];
+
+      // Isi chat mein forward karne ka matlab nahi
+      setForwardList(list.filter((c: any) => c?.id && c.id !== id));
+    } catch (err: any) {
+      Alert.alert("Error", handleApiError(err, "Could not load chats"));
+      setForwardMsg(null);
+    } finally {
+      setForwardLoading(false);
+    }
+  }, [id]);
+
+  const doForward = async (target: any) => {
+    if (!forwardMsg || !whatsappAccountId) return;
+
+    const type = (forwardMsg.type || "text").toLowerCase();
+    setForwardingTo(target.id);
+
+    try {
+      if (type === "text") {
+        await whatsappApi.sendText({
+          whatsappAccountId,
+          to: target.contact?.phone,
+          message: forwardMsg.content || "",
+          conversationId: target.id,
+        });
+      } else {
+        // Media forward - wahi mediaUrl dobara bhej do, naya upload nahi
+        const mediaUrl = forwardMsg.mediaUrl;
+        if (!mediaUrl) throw new Error("This media is no longer available to forward");
+
+        await inboxApi.sendMediaMessage(target.id, {
+          mediaType: type as "image" | "video" | "audio" | "document",
+          mediaUrl,
+          caption: forwardMsg.content || undefined,
+        });
+      }
+
+      setForwardMsg(null);
+      Alert.alert(
+        "Forwarded",
+        `Message sent to ${target.contact?.name || target.contact?.phone || "chat"}`
+      );
+    } catch (err: any) {
+      Alert.alert("Could not forward", handleApiError(err, "Forward failed"));
+    } finally {
+      setForwardingTo(null);
+    }
+  };
+
   const handleReply = (msg: Message) => {
     setReplyTo(msg);
   };
@@ -487,8 +578,15 @@ export default function ChatScreen() {
     }
   };
 
-  const name = conversation ? getContactName(conversation.contact) : "";
-  const initials = conversation ? getContactInitials(conversation.contact) : "";
+  // Conversation load hone se pehle bhi header bhara dikhe - list se aaya
+  // naam/phone use karo, taaki screen blank na lage
+  const name = conversation
+    ? getContactName(conversation.contact)
+    : paramName || "";
+  const phone = conversation?.contact.phone || paramPhone || "";
+  const initials = conversation
+    ? getContactInitials(conversation.contact)
+    : (name.trim()[0] || "?").toUpperCase();
   const avatarColor = getAvatarColor(name);
 
   const keyExtractor = useCallback((item: Message) => item.id, []);
@@ -515,32 +613,24 @@ export default function ChatScreen() {
             onReply={handleReply}
             onDelete={handleDeleteMessage}
             onCopy={handleCopyMessage}
+            onForward={openForward}
           />
         </View>
       );
     },
-    [messages, conversation?.id, name, handleReply, handleDeleteMessage]
+    [messages, conversation?.id, name, handleReply, handleDeleteMessage, openForward]
   );
 
   // ═══════════════════════════════════
   // RENDER
   // ═══════════════════════════════════
 
-  if (loading && messages.length === 0) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
-  if (!conversation) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <Text style={styles.errorText}>Conversation not found</Text>
-      </SafeAreaView>
-    );
-  }
+  // Pehle yahan poori screen ka loader tha - chat khulte hi sab blank.
+  // Ab header aur input turant render hote hain, spinner sirf message
+  // area mein aata hai. "Not found" tabhi jab fetch pura ho chuka ho.
+  const notFound = convChecked && !conversation;
+  const showMessagesLoader =
+    !notFound && messages.length === 0 && (loading || !conversation);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -553,6 +643,7 @@ export default function ChatScreen() {
         <TouchableOpacity
           style={styles.headerCenter}
           onPress={() => {
+            if (!conversation) return;
             router.push(
               `/(app)/inbox/contact-info/${conversation.id}` as never
             );
@@ -560,7 +651,7 @@ export default function ChatScreen() {
           activeOpacity={0.7}
         >
           <View style={[styles.headerAvatar, { backgroundColor: avatarColor }]}>
-            {conversation.contact.whatsappProfilePicUrl ? (
+            {conversation?.contact.whatsappProfilePicUrl ? (
               <Image
                 source={{ uri: conversation.contact.whatsappProfilePicUrl }}
                 style={styles.headerAvatarImg}
@@ -575,9 +666,7 @@ export default function ChatScreen() {
               {name}
             </Text>
             <Text style={styles.headerStatus} numberOfLines={1}>
-              {isContactTyping
-                ? "typing..."
-                : conversation.contact.phone}
+              {isContactTyping ? "typing..." : phone}
             </Text>
           </View>
         </TouchableOpacity>
@@ -586,7 +675,7 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={() => {
-              if (conversation.contact.phone) {
+              if (conversation?.contact.phone) {
                 router.push(`/(app)/inbox/contact-info/${conversation.id}` as never);
               }
             }}
@@ -596,6 +685,7 @@ export default function ChatScreen() {
           <TouchableOpacity
             style={styles.iconBtn}
             onPress={() => {
+              if (!conversation) return;
               router.push(`/(app)/inbox/contact-info/${conversation.id}` as never);
             }}
           >
@@ -608,11 +698,13 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {/* Window Status */}
-      <WindowStatusBar
-        isWindowOpen={conversation.isWindowOpen}
-        windowExpiresAt={conversation.windowExpiresAt}
-      />
+      {/* Window Status - asli data aane par hi, warna galat banner dikhega */}
+      {!!conversation && (
+        <WindowStatusBar
+          isWindowOpen={conversation.isWindowOpen}
+          windowExpiresAt={conversation.windowExpiresAt}
+        />
+      )}
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -623,6 +715,23 @@ export default function ChatScreen() {
         <View style={styles.messagesWrap}>
           {/* Chat background */}
           <View style={styles.chatBg} />
+
+          {showMessagesLoader && (
+            <View style={styles.messagesCenter} pointerEvents="none">
+              <ActivityIndicator size="large" color={Colors.primary} />
+            </View>
+          )}
+
+          {notFound && (
+            <View style={styles.messagesCenter}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={44}
+                color={Colors.textMuted}
+              />
+              <Text style={styles.errorText}>Conversation not found</Text>
+            </View>
+          )}
 
           <FlatList
             ref={flatListRef}
@@ -672,17 +781,22 @@ export default function ChatScreen() {
               : 4,
           }}
         >
-          <ChatInput
-            isWindowOpen={conversation.isWindowOpen}
-            onSendMessage={handleSendMessage}
-            onSendMedia={handleSendMedia}
-            onOpenTemplate={() => setShowTemplateModal(true)}
-          />
+          {conversation ? (
+            <ChatInput
+              isWindowOpen={conversation.isWindowOpen}
+              onSendMessage={handleSendMessage}
+              onSendMedia={handleSendMedia}
+              onOpenTemplate={() => setShowTemplateModal(true)}
+            />
+          ) : (
+            // Asli input tab tak nahi, jab tak window ka status na pata ho
+            <View style={styles.inputSkeleton} />
+          )}
         </View>
       </KeyboardAvoidingView>
 
       {/* Template Modal */}
-      {showTemplateModal && whatsappAccountId && (
+      {showTemplateModal && whatsappAccountId && conversation && (
         <TemplateModal
           visible={showTemplateModal}
           conversationId={conversation.id}
@@ -697,6 +811,94 @@ export default function ChatScreen() {
           }}
         />
       )}
+
+      {/* Forward - chat picker */}
+      <Modal
+        visible={!!forwardMsg}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setForwardMsg(null)}
+      >
+        <View style={fwdStyles.overlay}>
+          <View style={fwdStyles.sheet}>
+            <View style={fwdStyles.header}>
+              <Text style={fwdStyles.title}>Forward to</Text>
+              <TouchableOpacity onPress={() => setForwardMsg(null)} hitSlop={8}>
+                <Ionicons name="close" size={22} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={fwdStyles.searchRow}>
+              <Ionicons name="search" size={16} color={Colors.textMuted} />
+              <TextInput
+                style={fwdStyles.searchInput}
+                placeholder="Search chats"
+                placeholderTextColor={Colors.textMuted}
+                value={forwardSearch}
+                onChangeText={setForwardSearch}
+                autoCorrect={false}
+              />
+            </View>
+
+            {forwardLoading ? (
+              <View style={fwdStyles.centered}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            ) : (
+              <FlatList
+                data={forwardList.filter((c) => {
+                  const q = forwardSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  const n = (c.contact?.name || "").toLowerCase();
+                  const p = (c.contact?.phone || "").toLowerCase();
+                  return n.includes(q) || p.includes(q);
+                })}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="handled"
+                ListEmptyComponent={
+                  <View style={fwdStyles.centered}>
+                    <Text style={fwdStyles.emptyText}>No other chats</Text>
+                  </View>
+                }
+                renderItem={({ item }) => {
+                  const label =
+                    item.contact?.name || item.contact?.phone || "Unknown";
+                  const busy = forwardingTo === item.id;
+
+                  return (
+                    <TouchableOpacity
+                      style={fwdStyles.row}
+                      onPress={() => doForward(item)}
+                      disabled={!!forwardingTo}
+                    >
+                      <View style={fwdStyles.avatar}>
+                        <Text style={fwdStyles.avatarText}>
+                          {label.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={fwdStyles.rowName} numberOfLines={1}>
+                          {label}
+                        </Text>
+                        {!!item.contact?.phone && (
+                          <Text style={fwdStyles.rowPhone} numberOfLines={1}>
+                            {item.contact.phone}
+                          </Text>
+                        )}
+                      </View>
+                      {busy ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Ionicons name="send" size={16} color={Colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -721,6 +923,22 @@ function DateSeparator({ date }: { date: string }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#E5DDD5" },
+  messagesCenter: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+  inputSkeleton: {
+    height: 58,
+    backgroundColor: Colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
   loadingContainer: {
     flex: 1,
     backgroundColor: Colors.background,
@@ -848,4 +1066,67 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: "center",
   },
+});
+
+const fwdStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "75%",
+    paddingBottom: 20,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  title: { fontSize: 17, fontWeight: "800", color: Colors.textPrimary },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    margin: 14,
+    paddingHorizontal: 12,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: Colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14.5,
+    color: Colors.textPrimary,
+    paddingVertical: 0,
+  },
+  centered: { padding: 32, alignItems: "center" },
+  emptyText: { fontSize: 14, color: Colors.textSecondary },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  avatarText: { color: "#fff", fontSize: 15, fontWeight: "800" },
+  rowName: { fontSize: 15, fontWeight: "600", color: Colors.textPrimary },
+  rowPhone: { fontSize: 12.5, color: Colors.textSecondary, marginTop: 1 },
 });

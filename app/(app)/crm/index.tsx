@@ -94,14 +94,7 @@ export default function CRMScreen() {
     return `₹${val.toLocaleString("en-IN")}`;
   };
 
-  if (loading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
+  // Header turant, spinner sirf content area mein
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
@@ -122,6 +115,11 @@ export default function CRMScreen() {
         </TouchableOpacity>
       </View>
 
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
       <ScrollView
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
@@ -256,6 +254,7 @@ export default function CRMScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      )}
     </SafeAreaView>
   );
 }

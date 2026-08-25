@@ -200,15 +200,7 @@ export default function BillingScreen() {
     });
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading billing data...</Text>
-      </SafeAreaView>
-    );
-  }
-
+  // Header aur tabs turant, spinner sirf content area mein
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
@@ -240,6 +232,12 @@ export default function BillingScreen() {
         </TouchableOpacity>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading billing data...</Text>
+        </View>
+      ) : (
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {activeTab === "plans" ? (
           <View>
@@ -397,6 +395,7 @@ export default function BillingScreen() {
           </View>
         )}
       </ScrollView>
+      )}
 
       {/* RAZORPAY CHECKOUT MODAL */}
       {checkoutConfig && (

@@ -45,8 +45,8 @@ export function MessageNodeConfig({ data, onChange }: Props) {
         const result = await ImagePicker.launchImageLibraryAsync({
           mediaTypes:
             messageType === "video"
-              ? ImagePicker.MediaTypeOptions.Videos
-              : ImagePicker.MediaTypeOptions.Images,
+              ? ["videos"]
+              : ["images"],
           quality: 0.8,
         });
 

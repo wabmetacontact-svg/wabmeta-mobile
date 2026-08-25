@@ -18,11 +18,17 @@ import { templates as templatesApi } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
 import { Template } from "../../../src/types/template";
 import { TemplatePreview } from "../../../src/components/templates/TemplatePreview";
+import { cacheGet, cacheSet, cacheInvalidate } from "../../../src/hooks/useCachedFetch";
 
 export default function TemplateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [template, setTemplate] = useState<Template | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Cache se seed - dobara khole to turant dikhe
+  const [template, setTemplate] = useState<Template | null>(
+    () => cacheGet<Template>(`template:${id}`) ?? null
+  );
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Template>(`template:${id}`)
+  );
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchTemplate = useCallback(async () => {
@@ -31,6 +37,7 @@ export default function TemplateDetailScreen() {
       const res = await templatesApi.getById(id);
       if (res?.data?.success) {
         setTemplate(res.data.data as Template);
+        cacheSet(`template:${id}`, res.data.data);
       }
     } catch (err) {
       Alert.alert("Error", "Failed to load template");
@@ -57,6 +64,9 @@ export default function TemplateDetailScreen() {
           onPress: async () => {
             try {
               await templatesApi.delete(template.id);
+              // Cache saaf karo, warna delete kiya hua template dobara dikhega
+              cacheInvalidate(`template:${template.id}`);
+              cacheInvalidate("templates:list");
               Alert.alert("Success", "Template deleted");
               router.back();
             } catch (err: any) {
@@ -133,15 +143,30 @@ export default function TemplateDetailScreen() {
     }
   };
 
-  if (loading) {
+  // Pehle poori screen loader thi aur !template par blank. Ab header
+  // turant dikhta hai aur spinner sirf content wali jagah par.
+  if (!template) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
+            <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Template</Text>
+          </View>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.loadingContainer}>
+          {loading ? (
+            <ActivityIndicator size="large" color={Colors.primary} />
+          ) : (
+            <Text style={styles.headerSubtitle}>Template not found</Text>
+          )}
+        </View>
       </SafeAreaView>
     );
   }
-
-  if (!template) return null;
 
   const statusConfig = {
     APPROVED: { color: Colors.success, label: "Approved", icon: "checkmark-circle" as const },

@@ -70,12 +70,30 @@ export function CampaignCard({
   const read = campaign.readCount || 0;
   const failed = campaign.failedCount || 0;
 
-  const processed = sent + failed;
+  // Backend disjoint buckets bhejta hai:
+  //   sent      = bheja gaya, abhi delivered nahi
+  //   delivered = pahunch gaya, abhi pada nahi
+  //   read      = pada ja chuka
+  // Isliye jo pahunch gaya wo "sent" mein ginta hi nahi. Pehle yahan
+  // sirf (sent + failed) tha - delivered campaign 0% progress dikhati thi.
+  const processed = sent + delivered + read + failed;
   const progress = total > 0 ? Math.min(100, (processed / total) * 100) : 0;
 
-  const successRate = total > 0
-    ? Math.round(((sent - failed) / total) * 100)
-    : 0;
+  // Safal = jo contact tak pahunch gaya
+  const successful = delivered + read;
+  const successRate = total > 0 ? Math.round((successful / total) * 100) : 0;
+
+  const isCompleted = campaign.status === "COMPLETED";
+  const remaining = Math.max(0, total - processed);
+
+  const rateColor =
+    successRate >= 90
+      ? Colors.success
+      : successRate >= 70
+      ? Colors.info
+      : successRate >= 40
+      ? Colors.warning
+      : Colors.error;
 
   return (
     <TouchableOpacity
@@ -123,77 +141,98 @@ export function CampaignCard({
         <StatBox label="Failed" value={failed} color={Colors.error} />
       </View>
 
-      {/* Progress Bar (only for RUNNING/PAUSED/COMPLETED) */}
-      {(["RUNNING", "PAUSED", "COMPLETED"].includes(campaign.status) ||
-        sent > 0) && (
-        <View style={styles.progressContainer}>
-          <View style={styles.progressHeader}>
-            <Text style={styles.progressLabel}>Progress</Text>
-            <Text style={styles.progressValue}>{Math.round(progress)}%</Text>
-          </View>
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${progress}%`,
-                  backgroundColor:
-                    campaign.status === "COMPLETED"
-                      ? "#8B5CF6"
-                      : campaign.status === "PAUSED"
-                      ? Colors.warning
-                      : Colors.success,
-                },
-              ]}
-            />
-          </View>
-        </View>
-      )}
-
-      {/* Success Rate Badge (Completed only) */}
-      {campaign.status === "COMPLETED" && total > 0 && (
-        <View style={styles.successBadgeContainer}>
-          <View
-            style={[
-              styles.successBadge,
-              {
-                backgroundColor:
-                  successRate >= 90
-                    ? `${Colors.success}15`
-                    : successRate >= 80
-                    ? `${Colors.info}15`
-                    : `${Colors.warning}15`,
-              },
-            ]}
-          >
-            <Ionicons
-              name="trending-up"
-              size={12}
-              color={
-                successRate >= 90
-                  ? Colors.success
-                  : successRate >= 80
-                  ? Colors.info
-                  : Colors.warning
-              }
-            />
-            <Text
-              style={[
-                styles.successBadgeText,
-                {
-                  color:
-                    successRate >= 90
-                      ? Colors.success
-                      : successRate >= 80
-                      ? Colors.info
-                      : Colors.warning,
-                },
-              ]}
-            >
-              {successRate}% Success Rate
+      {/* Ho chuki campaign ke liye "Progress 100%" bekaar hai - uski jagah
+          result block: kitna pahuncha, kitna atka, kitna fail */}
+      {isCompleted && total > 0 ? (
+        <View style={styles.resultBox}>
+          <View style={styles.resultHeader}>
+            <Text style={styles.resultLabel}>
+              Delivered{" "}
+              <Text style={styles.resultCount}>
+                {successful} of {total}
+              </Text>
             </Text>
+            <View
+              style={[styles.ratePill, { backgroundColor: `${rateColor}15` }]}
+            >
+              <Ionicons name="trending-up" size={11} color={rateColor} />
+              <Text style={[styles.rateText, { color: rateColor }]}>
+                {successRate}%
+              </Text>
+            </View>
+          </View>
+
+          {/* Har status ka apna hissa - ek bhari hui 100% bar se zyada kaam ki */}
+          <View style={styles.segBar}>
+            {successful > 0 && (
+              <View
+                style={[
+                  styles.seg,
+                  { flex: successful, backgroundColor: Colors.success },
+                ]}
+              />
+            )}
+            {sent > 0 && (
+              <View
+                style={[styles.seg, { flex: sent, backgroundColor: Colors.info }]}
+              />
+            )}
+            {failed > 0 && (
+              <View
+                style={[
+                  styles.seg,
+                  { flex: failed, backgroundColor: Colors.error },
+                ]}
+              />
+            )}
+            {remaining > 0 && (
+              <View
+                style={[
+                  styles.seg,
+                  { flex: remaining, backgroundColor: Colors.borderLight },
+                ]}
+              />
+            )}
+          </View>
+
+          <View style={styles.legendRow}>
+            {successful > 0 && (
+              <Legend color={Colors.success} label={`${successful} delivered`} />
+            )}
+            {sent > 0 && (
+              <Legend color={Colors.info} label={`${sent} no receipt`} />
+            )}
+            {failed > 0 && (
+              <Legend color={Colors.error} label={`${failed} failed`} />
+            )}
+            {remaining > 0 && (
+              <Legend color={Colors.textMuted} label={`${remaining} not sent`} />
+            )}
           </View>
         </View>
+      ) : (
+        (["RUNNING", "PAUSED"].includes(campaign.status) || processed > 0) && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressLabel}>Progress</Text>
+              <Text style={styles.progressValue}>{Math.round(progress)}%</Text>
+            </View>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${progress}%`,
+                    backgroundColor:
+                      campaign.status === "PAUSED"
+                        ? Colors.warning
+                        : Colors.success,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        )
       )}
 
       {/* Footer */}
@@ -271,6 +310,15 @@ export function CampaignCard({
         </View>
       </View>
     </TouchableOpacity>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
   );
 }
 
@@ -396,6 +444,72 @@ const styles = StyleSheet.create({
   progressFill: {
     height: "100%",
     borderRadius: 3,
+  },
+
+  resultBox: {
+    marginBottom: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
+  resultHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  resultLabel: {
+    fontSize: 11.5,
+    color: Colors.textSecondary,
+    fontWeight: "600",
+  },
+  resultCount: {
+    color: Colors.textPrimary,
+    fontWeight: "800",
+  },
+  ratePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  rateText: {
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  segBar: {
+    flexDirection: "row",
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+    backgroundColor: Colors.borderLight,
+    gap: 1.5,
+  },
+  seg: {
+    height: "100%",
+  },
+  legendRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    marginTop: 8,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  legendDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  legendText: {
+    fontSize: 10.5,
+    color: Colors.textSecondary,
+    fontWeight: "600",
   },
 
   successBadgeContainer: {

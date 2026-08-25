@@ -339,14 +339,7 @@ export default function WhatsAppSettingsScreen() {
   // RENDER
   // ═══════════════════════════════════
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
+  // Header turant, spinner sirf accounts list wale area mein
   const connectedAccounts = accounts.filter((a) => a.status === "CONNECTED");
   const hasConnected = connectedAccounts.length > 0;
 
@@ -363,7 +356,11 @@ export default function WhatsAppSettingsScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>WhatsApp</Text>
           <Text style={styles.headerSubtitle}>
-            {hasConnected ? "Connected" : "Not connected"}
+            {loading
+              ? "Loading..."
+              : hasConnected
+              ? "Connected"
+              : "Not connected"}
           </Text>
         </View>
         {hasConnected && (
@@ -382,6 +379,11 @@ export default function WhatsAppSettingsScreen() {
         {!hasConnected && <View style={{ width: 40 }} />}
       </View>
 
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
       <ScrollView
         refreshControl={
           <RefreshControl
@@ -481,6 +483,7 @@ export default function WhatsAppSettingsScreen() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+      )}
 
       {/* Disconnect Modal */}
       {disconnectModal && (

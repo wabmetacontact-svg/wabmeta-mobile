@@ -64,11 +64,15 @@ export default function WalletScreen() {
   // ═══════════════════════════════════
   // LOADING STATE
   // ═══════════════════════════════════
+  // Header turant dikhe, spinner sirf wallet content ki jagah par
   if (loading && !walletData) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-        <Text style={styles.loadingText}>Loading wallet...</Text>
+      <SafeAreaView style={styles.container}>
+        <WalletHeader onRefresh={onRefresh} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading wallet...</Text>
+        </View>
       </SafeAreaView>
     );
   }

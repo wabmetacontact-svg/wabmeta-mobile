@@ -1,5 +1,5 @@
 // app/(app)/campaigns/create.tsx
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import { BackHandler } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -376,7 +377,60 @@ export default function CreateCampaignScreen() {
   // CREATE CAMPAIGN
   // ═══════════════════════════════════
 
+  // Android ka hardware back / swipe-back screen ko turant chhod deta tha
+  // aur poora bhara hua campaign form gayab ho jata tha. Header ke X par
+  // confirm tha, par back par kuch nahi. Ab dono ek hi jagah se guzarte hain.
+  const confirmDiscard = useCallback(() => {
+    // Campaign ban chuka hai to kuch "kho" nahi raha - seedha jaane do
+    if (createdCampaignId) {
+      router.back();
+      return;
+    }
+
+    Alert.alert("Discard Changes?", "Your campaign will not be saved", [
+      { text: "Keep Editing", style: "cancel" },
+      { text: "Discard", style: "destructive", onPress: () => router.back() },
+    ]);
+  }, [createdCampaignId]);
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      // Pehle step par ho to normal back, warna pichhle step par jao
+      if (currentStep > 1 && !createdCampaignId) {
+        setCurrentStep((prev) => prev - 1);
+        return true;
+      }
+
+      confirmDiscard();
+      return true; // default back rok do
+    });
+
+    return () => sub.remove();
+  }, [currentStep, createdCampaignId, confirmDiscard]);
+
   const handleCreateCampaign = async () => {
+    // Campaign step 5 ke "Next" par ban jata hai, "Confirm & Send" se pehle.
+    // Agar start fail ho aur user peeche jaakar dobara Next dabaye, to pehle
+    // yahan naya create chalta tha - aur backend "campaign already exists"
+    // de deta tha. Ab pehle se bana hua campaign reuse karte hain.
+    if (createdCampaignId) {
+      setCurrentStep(6);
+
+      // Estimate refresh kar lo - audience badli ho sakti hai
+      if (formData.scheduleType === "now") {
+        try {
+          setLoadingEstimate(true);
+          const estRes = await campaignsApi.estimateCost(createdCampaignId);
+          setWalletEstimate(estRes.data?.data);
+        } catch {
+          // estimate optional hai
+        } finally {
+          setLoadingEstimate(false);
+        }
+      }
+      return;
+    }
+
     setSending(true);
     try {
       const account = whatsappAccounts.find((a) => a.id === selectedAccountId);
@@ -526,7 +580,23 @@ export default function CreateCampaignScreen() {
           },
         ]);
       } else {
-        Alert.alert("Error", msg);
+        // Campaign already ban chuka hai - user ko batao ki wo gaya nahi,
+        // warna wo dobara poora flow chalata hai aur "already exists" milta hai
+        Alert.alert(
+          "Could not start campaign",
+          msg +
+            "\n\nYour campaign has been saved as a draft. You can start it again from the Campaigns list - no need to create it again.",
+          [
+            { text: "Try Again", onPress: handleStartCampaign },
+            {
+              text: "View Campaign",
+              onPress: () =>
+                router.replace(
+                  `/(app)/campaigns/${createdCampaignId}` as never
+                ),
+            },
+          ]
+        );
       }
     } finally {
       setSending(false);
@@ -554,19 +624,7 @@ export default function CreateCampaignScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            Alert.alert("Discard Changes?", "Your campaign will not be saved", [
-              { text: "Keep Editing", style: "cancel" },
-              {
-                text: "Discard",
-                style: "destructive",
-                onPress: () => router.back(),
-              },
-            ]);
-          }}
-          style={styles.iconBtn}
-        >
+        <TouchableOpacity onPress={confirmDiscard} style={styles.iconBtn}>
           <Ionicons name="close" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerCenter}>

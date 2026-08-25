@@ -1064,6 +1064,10 @@ export const users = {
   getProfile: () => api.get<ApiResponse>("/users/profile"),
   getProfileFull: () => api.get<ApiResponse>("/users/profile/full"),
   updateProfile: (data: any) => api.put<ApiResponse>("/users/profile", data),
+  // /users/profile ka avatar sirf URL leta hai. base64/data-uri yahan bhejo -
+  // backend ise R2/Cloudinary par upload karke hosted URL wapas deta hai.
+  updateAvatar: (avatar: string) =>
+    api.put<ApiResponse>("/users/avatar", { avatar }),
   getStats: () => api.get<ApiResponse>("/users/stats"),
   getSessions: () => api.get<ApiResponse>("/users/sessions"),
   revokeSession: (id: string) => api.delete<ApiResponse>(`/users/sessions/${id}`),

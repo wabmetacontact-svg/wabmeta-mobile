@@ -17,11 +17,17 @@ import { LinearGradient } from "expo-linear-gradient";
 import { contacts as contactsApi } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
 import { ContactWithGroups } from "../../../src/types/contact";
+import { cacheGet, cacheSet, cacheInvalidate } from "../../../src/hooks/useCachedFetch";
 
 export default function ContactDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const [contact, setContact] = useState<ContactWithGroups | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Cache se seed - back karke dobara khole to turant khule
+  const [contact, setContact] = useState<ContactWithGroups | null>(
+    () => cacheGet<ContactWithGroups>(`contact:${id}`) ?? null
+  );
+  const [loading, setLoading] = useState(
+    () => !cacheGet<ContactWithGroups>(`contact:${id}`)
+  );
 
   useEffect(() => {
     if (id && id !== "[id]" && id !== "undefined") {
@@ -42,6 +48,7 @@ export default function ContactDetailScreen() {
       if (res?.data?.success && res?.data?.data) {
         const contactData = (res.data.data as any)?.contact || res.data.data;
         setContact(contactData as ContactWithGroups);
+        cacheSet(`contact:${id}`, contactData);
       }
     } catch (err: any) {
       console.warn("Contact detail not found for id:", id);
@@ -59,6 +66,9 @@ export default function ContactDetailScreen() {
         onPress: async () => {
           try {
             await contactsApi.delete(id!);
+            // Cache saaf karo, warna delete kiya hua contact dobara dikhega
+            cacheInvalidate(`contact:${id}`);
+            cacheInvalidate("contacts:list");
             router.back();
           } catch {
             Alert.alert("Error", "Failed to delete contact");
@@ -97,14 +107,7 @@ export default function ContactDetailScreen() {
     return "?";
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
+  // Header turant, spinner sirf body mein
   if (!contact) {
     return (
       <SafeAreaView style={styles.container}>
@@ -113,6 +116,11 @@ export default function ContactDetailScreen() {
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
+        {loading ? (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : (
         <View style={styles.emptyContainer}>
           <Ionicons name="person-outline" size={48} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>Contact Not Found</Text>
@@ -124,6 +132,7 @@ export default function ContactDetailScreen() {
             <Text style={styles.emptyBtnText}>Go Back</Text>
           </TouchableOpacity>
         </View>
+        )}
       </SafeAreaView>
     );
   }

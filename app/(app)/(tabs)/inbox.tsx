@@ -241,7 +241,16 @@ export default function InboxScreen() {
       );
     }
 
-    router.push(`/(app)/inbox/${conv.id}` as never);
+    // Naam/phone saath bhejo - chat screen ka header pehle hi frame mein
+    // bhara dikhega, conversation fetch hone ka intezaar nahi karna padega
+    router.push({
+      pathname: "/(app)/inbox/[id]",
+      params: {
+        id: conv.id,
+        name: getContactName(conv.contact),
+        phone: conv.contact?.phone || "",
+      },
+    } as never);
   };
 
   const handleLongPress = (conv: Conversation) => {

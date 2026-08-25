@@ -1,5 +1,5 @@
 // src/components/inbox/MessageBubble.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,36 @@ import { getCachedAccessToken } from "../../utils/secureStorage";
 import { Colors } from "../../constants/colors";
 import { Message } from "../../types/inbox";
 import { formatMessageTime, formatFileSize } from "../../utils/inboxHelpers";
+
+// URLs, phone numbers aur emails ko pehchano taaki unhe tap kiya ja sake.
+// Pehle message ka text ek plain <Text> mein render hota tha, isliye link
+// na blue dikhte the na khulte the.
+// Bare domains (wabmeta.com) bhi pakadne hain - sirf http:// aur www. dekhna
+// kaafi nahi tha, log aksar seedha domain likhte hain.
+// Email ko URL se PEHLE match karna zaroori hai, warna 'name@site.com' ka
+// domain hissa URL ban jata.
+const TLDS =
+  "com|net|org|io|co|in|uk|us|ai|app|dev|me|info|biz|xyz|online|site|shop|store|tech|live|link|page|club|fun|pro|cloud";
+
+const LINK_PATTERN = new RegExp(
+  "([\\w.+-]+@[\\w-]+\\.[\\w.]{2,}|(?:https?://|www\\.)[^\\s<]+|\\b[\\w-]+(?:\\.[\\w-]+)*\\.(?:" + TLDS + ")\\b(?:/[^\\s<]*)?|\\+?\\d[\\d\\s-]{7,}\\d)",
+  "gi"
+);
+
+const linkTarget = (raw: string): string => {
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (raw.includes("@")) return "mailto:" + raw;
+  // Domain jaisa dikhta hai (www. wala ya bare) to https:// laga do
+  if (/[a-z]/i.test(raw) && raw.includes(".")) return "https://" + raw;
+  return "tel:" + raw.replace(/[\s-]/g, "");
+};
+
+const openLink = (raw: string) => {
+  const url = linkTarget(raw);
+  Linking.openURL(url).catch(() =>
+    Alert.alert("Cannot open", url)
+  );
+};
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const API_BASE = process.env.EXPO_PUBLIC_API_URL || "https://api.wabmeta.com/api";
@@ -65,6 +95,7 @@ interface Props {
   onDelete?: (msg: Message) => void;
   onCopy?: (content: string) => void;
   onStar?: (msg: Message) => void;
+  onForward?: (msg: Message) => void;
 }
 
 export const MessageBubble = React.memo(function MessageBubble({
@@ -75,7 +106,9 @@ export const MessageBubble = React.memo(function MessageBubble({
   onDelete,
   onCopy,
   onStar,
+  onForward,
 }: Props) {
+  const [showActions, setShowActions] = useState(false);
   const [showFullImage, setShowFullImage] = useState(false);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [imageLoading, setImageLoading] = useState(true);
@@ -127,34 +160,67 @@ export const MessageBubble = React.memo(function MessageBubble({
     }
   };
 
-  const showActionSheet = () => {
-    const options: any[] = [];
+  // Pehle yahan Alert.alert tha. Android par uske do problem the:
+  //   - sirf 3 buttons dikhte hain, isliye "Cancel" gir jata tha
+  //   - default cancelable false hai, to bahar tap ya back se band nahi hota
+  // Result: menu khul kar phans jata tha. Ab apna bottom sheet hai.
+  const actionItems = useMemo(() => {
+    const items: {
+      key: string;
+      label: string;
+      icon: keyof typeof Ionicons.glyphMap;
+      destructive?: boolean;
+      run: () => void;
+    }[] = [];
 
     if (onReply) {
-      options.push({ text: "Reply", onPress: () => onReply(message) });
+      items.push({
+        key: "reply",
+        label: "Reply",
+        icon: "arrow-undo",
+        run: () => onReply(message),
+      });
     }
     if (onCopy && message.content && msgType !== "template") {
-      options.push({
-        text: "Copy",
-        onPress: () => onCopy(message.content),
+      items.push({
+        key: "copy",
+        label: "Copy",
+        icon: "copy",
+        run: () => onCopy(message.content),
+      });
+    }
+    // Forward - text aur media dono. Location/interactive forward nahi hote.
+    if (onForward && ["text", "image", "video", "audio", "document"].includes(msgType)) {
+      items.push({
+        key: "forward",
+        label: "Forward",
+        icon: "arrow-redo",
+        run: () => onForward(message),
       });
     }
     if (onStar) {
-      options.push({
-        text: message.isStarred ? "Unstar" : "Star",
-        onPress: () => onStar(message),
+      items.push({
+        key: "star",
+        label: message.isStarred ? "Unstar" : "Star",
+        icon: message.isStarred ? "star-outline" : "star",
+        run: () => onStar(message),
       });
     }
     if (onDelete) {
-      options.push({
-        text: "Delete",
-        style: "destructive",
-        onPress: () => onDelete(message),
+      items.push({
+        key: "delete",
+        label: "Delete",
+        icon: "trash",
+        destructive: true,
+        run: () => onDelete(message),
       });
     }
-    options.push({ text: "Cancel", style: "cancel" });
 
-    Alert.alert("Message Options", "", options);
+    return items;
+  }, [message, msgType, onReply, onCopy, onForward, onStar, onDelete]);
+
+  const showActionSheet = () => {
+    if (actionItems.length > 0) setShowActions(true);
   };
 
   // Reply preview
@@ -206,9 +272,33 @@ export const MessageBubble = React.memo(function MessageBubble({
   // RENDER MESSAGE TYPES
   // ═══════════════════════════════════
 
-  const renderText = () => (
-    <Text style={styles.textContent}>{message.content}</Text>
-  );
+  const renderText = () => {
+    const content = message.content || "";
+    const parts = content.split(LINK_PATTERN);
+
+    return (
+      <Text style={styles.textContent} selectable>
+        {parts.map((part, i) => {
+          if (!part) return null;
+
+          // split() ke saath capture group har doosra element match hota hai
+          const isLink = i % 2 === 1;
+          if (!isLink) return part;
+
+          return (
+            <Text
+              key={i}
+              style={styles.linkText}
+              onPress={() => openLink(part)}
+              suppressHighlighting={false}
+            >
+              {part}
+            </Text>
+          );
+        })}
+      </Text>
+    );
+  };
 
   const renderImage = () => {
     const src = getMediaSrc();
@@ -344,11 +434,15 @@ export const MessageBubble = React.memo(function MessageBubble({
         // Open directly with Native Document / PDF viewer or Sharing Sheet
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(localPath, {
+            // APK ke liye sahi mime zaroori hai - octet-stream par Android
+            // ka package installer share sheet mein aata hi nahi
             mimeType:
-              message.mediaMimeType ||
-              (ext === "PDF"
-                ? "application/pdf"
-                : "application/octet-stream"),
+              ext === "APK"
+                ? "application/vnd.android.package-archive"
+                : message.mediaMimeType ||
+                  (ext === "PDF"
+                    ? "application/pdf"
+                    : "application/octet-stream"),
             dialogTitle: fileName,
             UTI: ext === "PDF" ? "com.adobe.pdf" : undefined,
           });
@@ -604,6 +698,58 @@ export const MessageBubble = React.memo(function MessageBubble({
           </View>
         )}
       </View>
+
+      {/* Message options - apna sheet, taaki bahar tap aur back dono se band ho */}
+      <Modal
+        visible={showActions}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowActions(false)}
+      >
+        <TouchableOpacity
+          style={actionStyles.overlay}
+          activeOpacity={1}
+          onPress={() => setShowActions(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={actionStyles.sheet}>
+            <View style={actionStyles.handle} />
+
+            {actionItems.map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={actionStyles.row}
+                onPress={() => {
+                  setShowActions(false);
+                  // Modal band hone ke baad chalao, warna Alert/picker
+                  // is modal ke peeche khul jate hain
+                  setTimeout(item.run, 150);
+                }}
+              >
+                <Ionicons
+                  name={item.icon}
+                  size={20}
+                  color={item.destructive ? Colors.error : Colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    actionStyles.rowText,
+                    item.destructive && { color: Colors.error },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={actionStyles.cancel}
+              onPress={() => setShowActions(false)}
+            >
+              <Text style={actionStyles.cancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </TouchableOpacity>
   );
 });
@@ -846,6 +992,10 @@ const styles = StyleSheet.create({
   },
 
   // Text
+  linkText: {
+    color: "#1D4ED8",
+    textDecorationLine: "underline",
+  },
   textContent: {
     fontSize: 15,
     color: "#000",
@@ -1181,4 +1331,44 @@ const audioStyles = StyleSheet.create({
   duration: {
     fontSize: 10,
   },
+});
+
+const actionStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 28,
+    paddingTop: 8,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    alignSelf: "center",
+    marginBottom: 8,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 22,
+    paddingVertical: 15,
+  },
+  rowText: { fontSize: 15.5, fontWeight: "600", color: Colors.textPrimary },
+  cancel: {
+    marginTop: 6,
+    marginHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: Colors.surfaceSecondary,
+    alignItems: "center",
+  },
+  cancelText: { fontSize: 15, fontWeight: "700", color: Colors.textSecondary },
 });

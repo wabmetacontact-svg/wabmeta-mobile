@@ -88,11 +88,32 @@ export default function ProfileScreen() {
 
     try {
       setSaving(true);
+
+      // Gallery se chuni hui photo data-uri hoti hai, aur /users/profile ka
+      // avatar sirf URL accept karta hai - isiliye "Validation failed" aata
+      // tha. Pehle use /users/avatar par bhejo, wahan se hosted URL milta hai.
+      let avatar = formData.avatar || undefined;
+
+      if (avatar?.startsWith("data:")) {
+        const up = await usersApi.updateAvatar(avatar);
+        const uploaded = up.data?.data as any;
+        const hosted: string | undefined = uploaded?.avatar || uploaded?.url;
+
+        // Agar dono uploads fail ho gaye to backend wahi data-uri lauta deta
+        // hai. Use profile call mein mat bhejo, warna wahi validation error
+        // dobara aayega - photo /users/avatar se already save ho chuki hai.
+        avatar = hosted && !hosted.startsWith("data:") ? hosted : undefined;
+
+        if (avatar) {
+          setFormData((prev) => ({ ...prev, avatar: avatar as string }));
+        }
+      }
+
       const res = await usersApi.updateProfile({
         firstName: formData.firstName,
         lastName: formData.lastName || undefined,
         phone: formData.phone || undefined,
-        avatar: formData.avatar || undefined,
+        avatar,
       });
 
       if (res.data?.success) {
@@ -100,9 +121,16 @@ export default function ProfileScreen() {
         updateUser(res.data.data);
       }
     } catch (err: any) {
+      const data = err.response?.data;
+      // Zod validation errors detail array mein aate hain - unhe dikhao,
+      // sirf "Validation failed" se user ko kuch pata nahi chalta
+      const detail = Array.isArray(data?.errors)
+        ? data.errors.map((e: any) => e.message).join("\n")
+        : null;
+
       Alert.alert(
         "Error",
-        err.response?.data?.message || "Failed to update profile"
+        detail || data?.message || "Failed to update profile"
       );
     } finally {
       setSaving(false);
@@ -119,7 +147,7 @@ export default function ProfileScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
@@ -161,14 +189,8 @@ export default function ProfileScreen() {
     );
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </SafeAreaView>
-    );
-  }
-
+  // Poora page block karne ke bajay header turant dikhta hai aur
+  // spinner sirf form wale area mein aata hai
   const getInitials = () => {
     const f = formData.firstName.charAt(0).toUpperCase();
     const l = formData.lastName.charAt(0).toUpperCase();
@@ -184,7 +206,7 @@ export default function ProfileScreen() {
         <Text style={styles.headerTitle}>Edit Profile</Text>
         <TouchableOpacity
           onPress={handleSave}
-          disabled={saving}
+          disabled={saving || loading}
           style={styles.saveBtn}
         >
           {saving ? (
@@ -195,6 +217,11 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       </View>
 
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={{ flex: 1 }}
@@ -368,6 +395,7 @@ export default function ProfileScreen() {
           <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
+      )}
     </SafeAreaView>
   );
 }
