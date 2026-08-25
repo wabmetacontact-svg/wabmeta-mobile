@@ -716,6 +716,29 @@ function AccountCard({
 
       {/* Actions */}
       <View style={styles.accountActions}>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.callingBtn]}
+          onPress={() => router.push('/(app)/settings/calling' as never)}
+        >
+          <Ionicons name="call-outline" size={14} color={Colors.info} />
+          <Text style={[styles.actionText, { color: Colors.info }]}>
+            Calling
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.profileBtn]}
+          onPress={() =>
+            router.push({
+              pathname: '/(app)/settings/business-profile',
+              params: { accountId: account.id },
+            } as never)
+          }
+        >
+          <Ionicons name="business-outline" size={14} color={Colors.primary} />
+          <Text style={[styles.actionText, { color: Colors.primary }]}>
+            Edit Profile
+          </Text>
+        </TouchableOpacity>
         {canSetDefault && (
           <TouchableOpacity
             style={[styles.actionBtn, styles.setDefaultBtn]}
@@ -1128,6 +1151,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   setDefaultBtn: {
+    backgroundColor: `${Colors.info}10`,
+  },
+  profileBtn: {
+    backgroundColor: `${Colors.primary}10`,
+  },
+  callingBtn: {
     backgroundColor: `${Colors.info}10`,
   },
   disconnectBtn: {

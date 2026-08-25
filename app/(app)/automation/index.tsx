@@ -20,6 +20,7 @@ import { Colors } from "../../../src/constants/colors";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
 import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import { Automation, AutomationStats, AutomationTrigger } from "../../../src/types/automation";
 
 const TRIGGER_CONFIG: Record<AutomationTrigger, { icon: keyof typeof Ionicons.glyphMap; label: string; color: string }> = {
@@ -35,9 +36,13 @@ export default function AutomationsScreen() {
   const { organization } = useAuth();
   const automationLocked = useFeatureLock("automation");
 
-  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [automations, setAutomations] = useState<Automation[]>(
+    () => cacheGet<Automation[]>("automations:list") ?? []
+  );
   const [stats, setStats] = useState<AutomationStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Automation[]>("automations:list")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -59,6 +64,7 @@ export default function AutomationsScreen() {
 
       if (listRes.status === "fulfilled" && listRes.value?.data?.success) {
         const list = Array.isArray(listRes.value.data.data) ? listRes.value.data.data : [];
+        cacheSet("automations:list", list);
         setAutomations(list);
         
         if (statsRes.status === "fulfilled" && statsRes.value?.data?.success) {

@@ -17,7 +17,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { automations as automationsApi, templates as templatesApi, contacts as contactsApi } from "../../../src/services/api";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
 import { Colors } from "../../../src/constants/colors";
+import { inbox as inboxApi, handleApiError } from "../../../src/services/api";
 import { AutomationAction, AutomationTrigger } from "../../../src/types/automation";
 
 const TRIGGERS: { value: AutomationTrigger; label: string; icon: keyof typeof Ionicons.glyphMap; desc: string }[] = [
@@ -33,10 +36,195 @@ const ACTIONS: { value: string; label: string; icon: keyof typeof Ionicons.glyph
   { value: "send_template", label: "Send Template", icon: "send", color: "#10B981" },
   { value: "send_image", label: "Send Image", icon: "image", color: "#8B5CF6" },
   { value: "send_video", label: "Send Video", icon: "videocam", color: "#EC4899" },
+  { value: "send_audio", label: "Send Audio", icon: "musical-notes", color: "#14B8A6" },
   { value: "send_document", label: "Send Doc", icon: "document", color: "#F97316" },
   { value: "delay", label: "Wait/Delay", icon: "hourglass", color: "#F59E0B" },
   { value: "add_tag", label: "Add Tag", icon: "pricetag", color: "#6366F1" },
 ];
+
+// Backend (automation.engine actionSendMedia) config.imageUrl / videoUrl /
+// audioUrl / documentUrl padhta hai, aur optional config.caption.
+// Pehle yahan sirf ek URL text box tha - phone se file choose karna possible
+// hi nahi tha, aur caption ka koi option nahi tha.
+const MEDIA_ACTIONS: Record<
+  string,
+  { field: string; label: string; caption: boolean; maxMb: number; kind: "media" | "file" }
+> = {
+  send_image: { field: "imageUrl", label: "Image", caption: true, maxMb: 5, kind: "media" },
+  send_video: { field: "videoUrl", label: "Video", caption: true, maxMb: 16, kind: "media" },
+  // WhatsApp audio par caption support nahi karta
+  send_audio: { field: "audioUrl", label: "Audio", caption: false, maxMb: 16, kind: "file" },
+  send_document: { field: "documentUrl", label: "Document", caption: true, maxMb: 100, kind: "file" },
+};
+
+function MediaActionConfig({
+  actionType,
+  config,
+  onChange,
+}: {
+  actionType: string;
+  config: any;
+  onChange: (patch: any) => void;
+}) {
+  const spec = MEDIA_ACTIONS[actionType];
+  const [uploading, setUploading] = useState(false);
+
+  if (!spec) return null;
+
+  const currentUrl = config[spec.field] || config.url || "";
+
+  const upload = async (
+    uri: string,
+    mimeType: string,
+    name: string,
+    sizeBytes?: number
+  ) => {
+    if (sizeBytes && sizeBytes > spec.maxMb * 1024 * 1024) {
+      Alert.alert("Too large", `${spec.label} must be under ${spec.maxMb} MB`);
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const res = await inboxApi.uploadMedia(uri, mimeType, name);
+      const url = (res.data?.data as any)?.url;
+      if (!url) throw new Error("Upload did not return a URL");
+
+      onChange({ [spec.field]: url, filename: name });
+    } catch (err: any) {
+      Alert.alert("Upload failed", handleApiError(err, "Could not upload file"));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const pick = async () => {
+    if (spec.kind === "media") {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission needed", "Media access is required to pick a file.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: actionType === "send_video" ? ["videos"] : ["images"],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      const a = result.assets[0];
+      const isVideo = actionType === "send_video";
+      await upload(
+        a.uri,
+        a.mimeType || (isVideo ? "video/mp4" : "image/jpeg"),
+        a.fileName || (isVideo ? "upload.mp4" : "upload.jpg"),
+        a.fileSize
+      );
+      return;
+    }
+
+    // Audio / document ke liye DocumentPicker
+    const result = await DocumentPicker.getDocumentAsync({
+      type: actionType === "send_audio" ? "audio/*" : "*/*",
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const a = result.assets[0];
+    await upload(
+      a.uri,
+      a.mimeType || "application/octet-stream",
+      a.name || "file",
+      a.size ?? undefined
+    );
+  };
+
+  return (
+    <View style={{ gap: 10 }}>
+      {currentUrl ? (
+        <View style={mediaStyles.attached}>
+          <Ionicons name="attach" size={16} color={Colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={mediaStyles.attachedName} numberOfLines={1}>
+              {config.filename || `${spec.label} attached`}
+            </Text>
+            <Text style={mediaStyles.attachedUrl} numberOfLines={1}>
+              {currentUrl}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => onChange({ [spec.field]: "", url: "", filename: "" })}
+            hitSlop={8}
+          >
+            <Ionicons name="close-circle" size={20} color={Colors.error} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={mediaStyles.uploadBtn}
+          onPress={pick}
+          disabled={uploading}
+        >
+          {uploading ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <Ionicons name="cloud-upload-outline" size={18} color={Colors.primary} />
+          )}
+          <Text style={mediaStyles.uploadText}>
+            {uploading ? "Uploading..." : `Upload ${spec.label.toLowerCase()}`}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      <TextInput
+        style={styles.input}
+        value={currentUrl}
+        onChangeText={(v) => onChange({ [spec.field]: v })}
+        placeholder="Or paste a public URL"
+        placeholderTextColor={Colors.textMuted}
+        autoCapitalize="none"
+      />
+
+      {spec.caption && (
+        <TextInput
+          style={styles.input}
+          value={config.caption || ""}
+          onChangeText={(v) => onChange({ caption: v })}
+          placeholder="Caption (optional)"
+          placeholderTextColor={Colors.textMuted}
+        />
+      )}
+    </View>
+  );
+}
+
+const mediaStyles = StyleSheet.create({
+  attached: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: `${Colors.primary}10`,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}30`,
+  },
+  attachedName: { fontSize: 13.5, fontWeight: "600", color: Colors.textPrimary },
+  attachedUrl: { fontSize: 11, color: Colors.textSecondary, marginTop: 1 },
+  uploadBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  uploadText: { fontSize: 14, fontWeight: "600", color: Colors.primary },
+});
 
 export default function CreateAutomationScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -260,13 +448,11 @@ export default function CreateAutomationScreen() {
             </View>
           )}
 
-          {["send_image", "send_video", "send_document", "send_audio"].includes(action.type) && (
-            <TextInput
-              style={styles.input}
-              value={action.config.url || ""}
-              onChangeText={(v) => updateActionConfig(action.id, { url: v })}
-              placeholder={`Enter ${action.type.replace("send_", "")} URL`}
-              placeholderTextColor={Colors.textMuted}
+          {MEDIA_ACTIONS[action.type] && (
+            <MediaActionConfig
+              actionType={action.type}
+              config={action.config}
+              onChange={(patch) => updateActionConfig(action.id, patch)}
             />
           )}
 

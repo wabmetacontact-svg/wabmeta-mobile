@@ -27,6 +27,7 @@ import { Colors } from "../../../src/constants/colors";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
 import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import {
   Conversation,
   InboxStats,
@@ -46,11 +47,17 @@ export default function InboxScreen() {
   const { organization } = useAuth();
   const inboxLocked = useFeatureLock("inbox");
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  // Pichhli baar ka data turant dikha do - spinner sirf pehli baar.
+  // Fresh data background mein aa hi raha hai.
+  const [conversations, setConversations] = useState<Conversation[]>(
+    () => cacheGet<Conversation[]>("inbox:conversations") ?? []
+  );
   const [stats, setStats] = useState<InboxStats | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Conversation[]>("inbox:conversations")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
@@ -92,7 +99,9 @@ export default function InboxScreen() {
         else if ((data as any)?.conversations)
           list = (data as any).conversations;
 
-        setConversations(sortConversations(list.filter((c) => c?.id)));
+        const clean = sortConversations(list.filter((c) => c?.id));
+        cacheSet("inbox:conversations", clean);
+        setConversations(clean);
       }
     } catch (err: any) {
       console.error("Fetch conversations error:", err?.message);

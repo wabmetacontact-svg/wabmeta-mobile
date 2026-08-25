@@ -30,6 +30,7 @@ import {
   MessageStatusUpdate,
 } from "../../../src/hooks/useInboxSocket";
 import { Colors } from "../../../src/constants/colors";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import { Message, Conversation } from "../../../src/types/inbox";
 import {
   getContactName,
@@ -45,13 +46,23 @@ import { WindowStatusBar } from "../../../src/components/inbox/WindowStatusBar";
 import { ReplyBar } from "../../../src/components/inbox/ReplyBar";
 import { TemplateModal } from "../../../src/components/inbox/TemplateModal";
 
+// Connected WhatsApp account poore app ke liye ek hi hota hai. Isliye
+// module level par cache - har chat open par network call na jaye.
+let cachedAccountId: string | null = null;
+let accountFetchPromise: Promise<string | null> | null = null;
+
 export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useSafeAreaInsets();
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Pichhli baar ke messages turant dikha do, fresh background mein aayenge
+  const [messages, setMessages] = useState<Message[]>(
+    () => cacheGet<Message[]>(`chat:${id}`) ?? []
+  );
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Message[]>(`chat:${id}`)
+  );
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
@@ -129,6 +140,8 @@ export default function ChatScreen() {
               return [...prev, ...newOlder];
             });
           } else {
+            // Chat dobara kholne par purane messages turant dikh jayein
+            cacheSet(`chat:${id}`, list);
             setMessages(list);
             list.forEach((m: any) => {
               if (m.waMessageId) sentIdsRef.current.add(m.waMessageId);
@@ -156,15 +169,39 @@ export default function ChatScreen() {
   );
 
   const fetchWhatsAppAccount = useCallback(async () => {
-    try {
-      const res = await whatsappApi.accounts();
-      const accounts = res?.data?.data?.accounts || (Array.isArray(res?.data?.data) ? res?.data?.data : []);
-      const connected = accounts.find(
-        (a: any) => String(a.status || "").toUpperCase() === "CONNECTED"
-      );
-      if (connected) setWhatsappAccountId(connected.id);
-    } catch (err) {
-      console.error("Account fetch error:", err);
+    // Connected account har chat ke liye same hota hai, par ye har chat open
+    // par /meta/accounts call kar raha tha - jo ab usage counts bhi compute
+    // karta hai. Isliye process-level cache: ek baar laao, phir reuse.
+    if (cachedAccountId) {
+      setWhatsappAccountId(cachedAccountId);
+      return;
+    }
+
+    if (!accountFetchPromise) {
+      accountFetchPromise = (async () => {
+        try {
+          const res = await whatsappApi.accounts();
+          const accounts =
+            res?.data?.data?.accounts ||
+            (Array.isArray(res?.data?.data) ? res?.data?.data : []);
+          const connected = accounts.find(
+            (a: any) => String(a.status || "").toUpperCase() === "CONNECTED"
+          );
+          return connected?.id || null;
+        } catch (err) {
+          console.error("Account fetch error:", err);
+          return null;
+        } finally {
+          // Fail hone par agli baar dobara try ho sake
+          accountFetchPromise = null;
+        }
+      })();
+    }
+
+    const id = await accountFetchPromise;
+    if (id) {
+      cachedAccountId = id;
+      setWhatsappAccountId(id);
     }
   }, []);
 

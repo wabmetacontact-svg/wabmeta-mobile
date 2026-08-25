@@ -19,6 +19,7 @@ import {
   handleApiError,
 } from "../services/api";
 import { AuthStorage } from "../utils/secureStorage";
+import { cacheClearAll } from "../hooks/useCachedFetch";
 
 export interface User {
   id: string;
@@ -81,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const handleForceLogout = async () => {
+      cacheClearAll();
       await AuthStorage.clearAll();
       setUser(null);
       setOrganizationState(null);
@@ -193,6 +195,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     } finally {
+      // Screen caches bhi saaf karo - warna agla user pichhle user ka
+      // data (chats, contacts, campaigns) dekh lega
+      cacheClearAll();
       await AuthStorage.clearAll();
       setUser(null);
       setOrganizationState(null);

@@ -23,13 +23,19 @@ import { ContactItem } from "../../../src/components/contacts/ContactItem";
 import { AddContactModal } from "../../../src/components/contacts/AddContactModal";
 import { ContactActionsSheet } from "../../../src/components/contacts/ContactActionsSheet";
 import { BulkActionsBar } from "../../../src/components/contacts/BulkActionsBar";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 
 export default function ContactsScreen() {
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  // Cache se seed - tab wapas aane par spinner na dikhe
+  const [contacts, setContacts] = useState<Contact[]>(
+    () => cacheGet<Contact[]>("contacts:list") ?? []
+  );
   const [stats, setStats] = useState<ContactStats | null>(null);
   const [tags, setTags] = useState<TagCount[]>([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Contact[]>("contacts:list")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -89,6 +95,7 @@ export default function ContactsScreen() {
               return [...prev, ...newItems];
             });
           } else {
+            cacheSet("contacts:list", contactList);
             setContacts(contactList);
           }
 

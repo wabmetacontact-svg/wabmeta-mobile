@@ -792,8 +792,65 @@ export const wallet = {
   }) => api.post<ApiResponse>("/wallet/topup/retry", data),
 };
 
+export interface BusinessProfile {
+  about?: string;
+  address?: string;
+  description?: string;
+  email?: string;
+  websites?: string[];
+  vertical?: string;
+  profile_picture_url?: string;
+  // Display name business-profile endpoint ka hissa nahi hai - wo phone
+  // number object par hota hai, backend usse merge karke bhejta hai
+  displayName?: string | null;
+  nameStatus?: string | null;
+}
+
 export const meta = {
   getAccounts: () => api.get<ApiResponse>("/meta/accounts"),
+
+  getBusinessProfile: (accountId: string) =>
+    api.get<ApiResponse<BusinessProfile>>(
+      `/meta/accounts/${accountId}/business-profile`
+    ),
+
+  updateBusinessProfile: (
+    accountId: string,
+    data: Partial<
+      Pick<
+        BusinessProfile,
+        "about" | "address" | "description" | "email" | "websites" | "vertical"
+      >
+    >
+  ) =>
+    api.put<ApiResponse<BusinessProfile>>(
+      `/meta/accounts/${accountId}/business-profile`,
+      data
+    ),
+
+  updateProfilePicture: (accountId: string, uri: string, mimeType: string) => {
+    const formData = new FormData();
+    formData.append("file", {
+      uri,
+      type: mimeType,
+      name: mimeType === "image/png" ? "profile.png" : "profile.jpg",
+    } as any);
+
+    return api.post<ApiResponse<BusinessProfile>>(
+      `/meta/accounts/${accountId}/business-profile/picture`,
+      formData,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 120000,
+      }
+    );
+  },
+
+  // Meta review se guzarta hai - turant apply nahi hota
+  requestDisplayNameChange: (accountId: string, displayName: string) =>
+    api.post<ApiResponse>(`/meta/accounts/${accountId}/display-name`, {
+      displayName,
+    }),
 
   getAccount: (id: string) => api.get<ApiResponse>(`/meta/accounts/${id}`),
 
@@ -859,6 +916,39 @@ export const whatsapp = {
 
   syncAllAccountsQuality: () =>
     api.post<ApiResponse>("/whatsapp/accounts/sync-all"),
+};
+
+export interface CallingSettings {
+  callingEnabled: boolean;
+  // Meta ke paas inbound calls ka alag field nahi hai - call button chhupana
+  // hi customers ko call karne se rokne ka tarika hai
+  showCallButton: boolean;
+  callbackEnabled: boolean;
+  callHoursEnabled: boolean;
+  restrictToCountries?: string[];
+  phoneNumber?: string;
+  phoneNumberId?: string;
+  message?: string;
+}
+
+export const calling = {
+  getSettings: () => api.get<ApiResponse<CallingSettings>>('/calling/settings'),
+
+  updateSettings: (data: {
+    callingEnabled: boolean;
+    showCallButton?: boolean;
+    callbackEnabled?: boolean;
+    callHoursEnabled?: boolean;
+    restrictToCountries?: string[];
+    timezone?: string;
+    weeklyHours?: Array<{ day: string; openTime: string; closeTime: string }>;
+  }) => api.put<ApiResponse>('/calling/settings', data),
+
+  getLogs: (params?: { page?: number; limit?: number }) =>
+    api.get<ApiResponse>('/calling/logs', { params }),
+
+  initiate: (to: string, whatsappAccountId?: string) =>
+    api.post<ApiResponse>('/calling/initiate', { to, whatsappAccountId }),
 };
 
 export const chatbots = {

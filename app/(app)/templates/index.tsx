@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { templates as templatesApi, whatsapp as whatsappApi } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import {
   Template,
   TemplateStats,
@@ -72,10 +73,14 @@ const CATEGORY_COLORS: Record<TemplateCategory, string> = {
 // ═══════════════════════════════════
 
 export default function TemplatesScreen() {
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<Template[]>(
+    () => cacheGet<Template[]>("templates:list") ?? []
+  );
   const [stats, setStats] = useState<TemplateStats | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Template[]>("templates:list")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
@@ -135,6 +140,7 @@ export default function TemplatesScreen() {
       if (res?.data?.success) {
         const data = res.data.data as any;
         const list = Array.isArray(data) ? data : data?.templates || [];
+        cacheSet("templates:list", list);
         setTemplates(list);
       }
     } catch (err: any) {

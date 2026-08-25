@@ -20,6 +20,7 @@ import { Colors } from "../../../src/constants/colors";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
 import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import { Chatbot, ChatbotStatus } from "../../../src/types/chatbot";
 
 const STATUS_FILTERS: {
@@ -37,8 +38,12 @@ export default function ChatbotListScreen() {
   const pathname = usePathname();
   const { organization } = useAuth();
   const chatbotLocked = useFeatureLock("chatbot");
-  const [chatbots, setChatbots] = useState<Chatbot[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [chatbots, setChatbots] = useState<Chatbot[]>(
+    () => cacheGet<Chatbot[]>("chatbots:list") ?? []
+  );
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Chatbot[]>("chatbots:list")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -61,6 +66,7 @@ export default function ChatbotListScreen() {
       if (res?.data?.success) {
         const data = res.data.data as any;
         const list = Array.isArray(data) ? data : data?.chatbots || [];
+        cacheSet("chatbots:list", list);
         setChatbots(list);
       }
     } catch (err: any) {

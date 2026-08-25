@@ -15,14 +15,19 @@ import { router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { crm as crmApi } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import { CRMStats, Pipeline, Lead } from "../../../src/types/crm";
 
 export default function CRMScreen() {
   const [stats, setStats] = useState<CRMStats | null>(null);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>(
+    () => cacheGet<Pipeline[]>("crm:pipelines") ?? []
+  );
   const [recentLeads, setRecentLeads] = useState<Lead[]>([]);
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Pipeline[]>("crm:pipelines")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const pathname = usePathname();
@@ -44,6 +49,7 @@ export default function CRMScreen() {
 
       if (pipesRes.status === "fulfilled" && pipesRes.value?.data?.success) {
         const pList = Array.isArray(pipesRes.value.data.data) ? pipesRes.value.data.data : [];
+        cacheSet("crm:pipelines", pList);
         setPipelines(pList);
       } else {
         setPipelines([]);

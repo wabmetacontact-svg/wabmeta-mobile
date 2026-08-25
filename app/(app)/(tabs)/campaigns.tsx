@@ -25,6 +25,7 @@ import { Colors } from "../../../src/constants/colors";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
 import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
+import { cacheGet, cacheSet } from "../../../src/hooks/useCachedFetch";
 import {
   Campaign,
   CampaignStats,
@@ -48,10 +49,15 @@ export default function CampaignsScreen() {
   const { organization } = useAuth();
   const campaignsLocked = useFeatureLock("campaigns");
 
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  // Cache se seed - tab switch par spinner na dikhe
+  const [campaigns, setCampaigns] = useState<Campaign[]>(
+    () => cacheGet<Campaign[]>("campaigns:list") ?? []
+  );
   const [stats, setStats] = useState<CampaignStats | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !cacheGet<Campaign[]>("campaigns:list")
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -85,6 +91,7 @@ export default function CampaignsScreen() {
         const list = Array.isArray(data)
           ? data
           : data?.campaigns || data?.items || [];
+        cacheSet("campaigns:list", list);
         setCampaigns(list);
       }
     } catch (err: any) {
