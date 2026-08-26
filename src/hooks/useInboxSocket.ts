@@ -1,6 +1,7 @@
 // src/hooks/useInboxSocket.ts
 import { useEffect, useRef } from "react";
 import { useSocket } from "../context/SocketContext";
+import { cacheGet, cacheSet } from "./useCachedFetch";
 
 export interface InboundMessage {
   id: string;
@@ -96,6 +97,49 @@ export function useInboxSocket(
   useEffect(() => {
     if (!socket) return;
 
+    // Chat screen `chat:{id}` cache se turant render hota hai. Socket se naya
+    // message aane par sirf screen ka state badalta tha, cache purana rehta tha -
+    // isliye list me message turant dikhta tha par chat kholte hi purana cache
+    // render hota tha aur naya message fetch ke baad "late" aata tha.
+    // Ab cache bhi yahin taaza kar dete hain.
+    const appendToChatCache = (convId: string, msg: any) => {
+      const cached = cacheGet<any[]>(`chat:${convId}`);
+      // Cache hai hi nahi to banao mat - warna chat screen ko lagega ki poori
+      // history sirf yahi ek message hai
+      if (!cached) return;
+
+      const dup = cached.some(
+        (m) =>
+          m.id === msg.id ||
+          (msg.waMessageId &&
+            (m.waMessageId === msg.waMessageId || m.wamId === msg.waMessageId))
+      );
+      if (dup) return;
+
+      // Inverted list - naya message index 0 par
+      cacheSet(`chat:${convId}`, [msg, ...cached]);
+    };
+
+    const updateStatusInChatCache = (convId: string, data: any) => {
+      const cached = cacheGet<any[]>(`chat:${convId}`);
+      if (!cached) return;
+
+      let changed = false;
+      const next = cached.map((m) => {
+        const match =
+          m.id === data.messageId ||
+          (data.waMessageId &&
+            (m.waMessageId === data.waMessageId || m.wamId === data.waMessageId)) ||
+          (data.wamId && (m.wamId === data.wamId || m.waMessageId === data.wamId));
+
+        if (!match) return m;
+        changed = true;
+        return { ...m, status: String(data.status).toUpperCase() };
+      });
+
+      if (changed) cacheSet(`chat:${convId}`, next);
+    };
+
     const handleNewMessage = (data: any) => {
       try {
         const raw = data?.message || data;
@@ -109,6 +153,7 @@ export function useInboxSocket(
           createdAt: raw.createdAt || new Date().toISOString(),
         };
 
+        appendToChatCache(convId, msg);
         onNewMessageRef.current?.(msg);
       } catch (e) {
         console.error("handleNewMessage error:", e);
@@ -128,6 +173,11 @@ export function useInboxSocket(
     const handleMessageStatus = (data: any) => {
       try {
         if (!data?.status) return;
+
+        if (data.conversationId) {
+          updateStatusInChatCache(data.conversationId, data);
+        }
+
         onMessageStatusRef.current?.({
           messageId: data.messageId,
           waMessageId: data.waMessageId,

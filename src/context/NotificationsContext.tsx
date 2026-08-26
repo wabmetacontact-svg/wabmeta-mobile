@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { notifications as notificationsApi } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import { usePushNotifications } from "../hooks/usePushNotifications";
+import { usePushNotifications, PushStatus } from "../hooks/usePushNotifications";
 
 export interface AppNotification {
   id: string;
@@ -24,6 +24,9 @@ interface NotificationsContextProps {
   markAllAsRead: () => Promise<void>;
   deleteNotification: (id: string) => Promise<void>;
   clearAll: () => Promise<void>;
+  // Push kaam kar raha hai ya nahi - taaki UI wajah dikha sake
+  pushStatus: PushStatus;
+  pushError: string | null;
 }
 
 const NotificationsContext = createContext<NotificationsContextProps | undefined>(undefined);
@@ -35,7 +38,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { lastNotification } = usePushNotifications();
+  const { lastNotification, pushStatus, pushError } = usePushNotifications();
 
   const fetchNotifications = useCallback(async (filter: "all" | "unread" = "all", type = "all") => {
     if (!isAuthenticated) return;
@@ -131,6 +134,8 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
         markAllAsRead,
         deleteNotification,
         clearAll,
+        pushStatus,
+        pushError,
       }}
     >
       {children}

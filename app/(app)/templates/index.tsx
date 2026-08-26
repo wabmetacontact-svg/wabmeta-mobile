@@ -54,12 +54,10 @@ const STATUS_FILTERS: {
     color: Colors.error,
     icon: "close-circle",
   },
-  {
-    value: "DRAFT",
-    label: "Draft",
-    color: Colors.textMuted,
-    icon: "document",
-  },
+  // "Draft" yahan se hata diya. TemplateStatus enum me sirf PENDING,
+  // APPROVED aur REJECTED hain - DRAFT hai hi nahi. Us filter par tap
+  // karne se ?status=DRAFT jata tha, backend Zod use reject karta tha
+  // aur poori templates list "Validation failed" ke saath fail ho jati thi.
 ];
 
 const CATEGORY_COLORS: Record<TemplateCategory, string> = {
@@ -86,6 +84,7 @@ export default function TemplatesScreen() {
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [showSearch, setShowSearch] = useState(false);
 
@@ -136,6 +135,7 @@ export default function TemplatesScreen() {
       if (categoryFilter) params.category = categoryFilter;
 
       const res = await templatesApi.getAll(params);
+      setLoadError(null);
 
       if (res?.data?.success) {
         const data = res.data.data as any;
@@ -144,6 +144,15 @@ export default function TemplatesScreen() {
         setTemplates(list);
       }
     } catch (err: any) {
+      // Pehle ye sirf console me jata tha - user ko khali ya purani list
+      // dikhti thi aur pata hi nahi chalta tha ki kuch fail hua hai.
+      const detail = Array.isArray(err?.response?.data?.errors)
+        ? err.response.data.errors.map((e: any) => e.message).join("\n")
+        : null;
+
+      setLoadError(
+        detail || err?.response?.data?.message || "Could not load templates"
+      );
       console.error("Templates error:", err?.response?.data?.message);
     } finally {
       setLoading(false);
@@ -413,6 +422,22 @@ export default function TemplatesScreen() {
                 color={Colors.error}
               />
             </ScrollView>
+          </View>
+        )}
+
+        {/* Load fail hua to batao - warna list khali dikhti hai aur
+            lagta hai ki koi template hai hi nahi */}
+        {!!loadError && (
+          <View style={styles.loadErrorBox}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={18}
+              color={Colors.error}
+            />
+            <Text style={styles.loadErrorText}>{loadError}</Text>
+            <TouchableOpacity onPress={fetchTemplates} hitSlop={8}>
+              <Text style={styles.loadErrorRetry}>Retry</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -791,6 +816,21 @@ function EmptyState({
 // ═══════════════════════════════════
 
 const styles = StyleSheet.create({
+  loadErrorBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    borderRadius: 10,
+    backgroundColor: Colors.error + "12",
+    borderWidth: 1,
+    borderColor: Colors.error + "30",
+  },
+  loadErrorText: { flex: 1, fontSize: 12.5, color: Colors.textPrimary, lineHeight: 17 },
+  loadErrorRetry: { fontSize: 12.5, fontWeight: "800", color: Colors.error },
   container: { flex: 1, backgroundColor: Colors.background },
 
   header: {

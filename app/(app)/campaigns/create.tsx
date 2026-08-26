@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { BackHandler } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -70,8 +71,68 @@ const STEPS = [
 
 // ═══════════════════════════════════
 
+// ═══════════════════════════════════
+// DRAFT (unfinished campaign)
+// ═══════════════════════════════════
+// The campaign is only created on the server once the user gets past step 5.
+// Before that, closing the app or backing out threw away the whole filled-in
+// form. The wizard state is now saved on the device so it can be resumed.
+
+const DRAFT_KEY = "campaign:draft";
+
+// Writing a very large string to AsyncStorage fails on Android, and a CSV
+// import can carry thousands of contacts - hence the cap.
+const DRAFT_MAX_BYTES = 400_000;
+
+type CampaignDraft = {
+  savedAt: string;
+  currentStep: number;
+  selectedAccountId: string;
+  formData: CampaignFormData;
+  csvDropped?: boolean;
+};
+
+async function readDraft(): Promise<CampaignDraft | null> {
+  try {
+    const raw = await AsyncStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as CampaignDraft) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function clearDraft() {
+  try {
+    await AsyncStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // storage na chale to bhi baaki sab chalta rahe
+  }
+}
+
+async function writeDraft(draft: CampaignDraft) {
+  try {
+    let payload = JSON.stringify(draft);
+
+    // Too big: drop the CSV contacts so everything else still survives.
+    // The user only has to pick the CSV again.
+    if (payload.length > DRAFT_MAX_BYTES) {
+      payload = JSON.stringify({
+        ...draft,
+        formData: { ...draft.formData, csvContacts: [] },
+        csvDropped: true,
+      });
+    }
+
+    if (payload.length > DRAFT_MAX_BYTES) return; // still too big - skip saving
+    await AsyncStorage.setItem(DRAFT_KEY, payload);
+  } catch {
+    // Saving is best effort - never interrupt what the user is doing
+  }
+}
+
 export default function CreateCampaignScreen() {
   const [currentStep, setCurrentStep] = useState(1);
+  const [draftChecked, setDraftChecked] = useState(false);
   const [sending, setSending] = useState(false);
 
   // Data
@@ -112,6 +173,91 @@ export default function CreateCampaignScreen() {
   });
 
   // ═══════════════════════════════════
+  // DRAFT: resume aur autosave
+  // ═══════════════════════════════════
+
+  // On open, offer to pick up the previous unfinished campaign
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      const draft = await readDraft();
+      if (!alive) return;
+
+      if (!draft) {
+        setDraftChecked(true);
+        return;
+      }
+
+      const when = new Date(draft.savedAt);
+      const ago = Math.round((Date.now() - when.getTime()) / 60000);
+      const agoText =
+        ago < 1
+          ? "just now"
+          : ago < 60
+          ? `${ago} min ago`
+          : ago < 1440
+          ? `${Math.round(ago / 60)}h ago`
+          : when.toLocaleDateString("en-IN");
+
+      Alert.alert(
+        "Unfinished Campaign",
+        `You were working on "${draft.formData.name || "Untitled"}" ${agoText}.${
+          draft.csvDropped
+            ? "\n\nThe imported CSV contacts were too large to save, so you will need to pick that file again."
+            : ""
+        }`,
+        [
+          {
+            text: "Start Fresh",
+            style: "destructive",
+            onPress: async () => {
+              await clearDraft();
+              setDraftChecked(true);
+            },
+          },
+          {
+            text: "Continue",
+            onPress: () => {
+              setFormData(draft.formData);
+              setSelectedAccountId(draft.selectedAccountId);
+              setCurrentStep(draft.currentStep);
+              setDraftChecked(true);
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Save on every change, but stop once the campaign exists on the server -
+  // at that point it already lives there with DRAFT status.
+  useEffect(() => {
+    if (!draftChecked || createdCampaignId) return;
+
+    // No point saving an empty form on step 1
+    if (currentStep === 1 && !formData.name.trim() && !formData.templateId) {
+      return;
+    }
+
+    const t = setTimeout(() => {
+      writeDraft({
+        savedAt: new Date().toISOString(),
+        currentStep,
+        selectedAccountId,
+        formData,
+      });
+    }, 600);
+
+    return () => clearTimeout(t);
+  }, [draftChecked, createdCampaignId, currentStep, selectedAccountId, formData]);
+
+  // ═══════════════════════════════════
   // LOAD ACCOUNTS
   // ═══════════════════════════════════
 
@@ -142,7 +288,13 @@ export default function CreateCampaignScreen() {
 
         setWhatsappAccounts(connected);
         const def = connected.find((a) => a.isDefault) || connected[0];
-        setSelectedAccountId(def.id);
+
+        // If a draft was resumed, keep the account it had chosen. This used to
+        // set the default outright, so when accounts loaded after the draft the
+        // user's choice was silently replaced. The account must still be connected.
+        setSelectedAccountId((prev) =>
+          prev && connected.some((a) => a.id === prev) ? prev : def.id
+        );
       } catch {
         Alert.alert("Error", "Failed to load WhatsApp accounts");
         router.back();
@@ -378,24 +530,48 @@ export default function CreateCampaignScreen() {
   // ═══════════════════════════════════
 
   // Android ka hardware back / swipe-back screen ko turant chhod deta tha
-  // aur poora bhara hua campaign form gayab ho jata tha. Header ke X par
-  // confirm tha, par back par kuch nahi. Ab dono ek hi jagah se guzarte hain.
+  // and the filled-in campaign form disappeared. The header X asked for
+  // confirmation but back did not. Both now go through the same place.
   const confirmDiscard = useCallback(() => {
-    // Campaign ban chuka hai to kuch "kho" nahi raha - seedha jaane do
+    // The campaign already exists, so nothing is lost - just leave
     if (createdCampaignId) {
       router.back();
       return;
     }
 
-    Alert.alert("Discard Changes?", "Your campaign will not be saved", [
-      { text: "Keep Editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: () => router.back() },
-    ]);
-  }, [createdCampaignId]);
+    // Android only renders 3 alert buttons - never add a fourth here
+    Alert.alert(
+      "Save as Draft?",
+      "This campaign is not finished. Save it as a draft and you can pick up right where you left off.",
+      [
+        { text: "Keep Editing", style: "cancel" },
+        {
+          text: "Discard",
+          style: "destructive",
+          onPress: async () => {
+            await clearDraft();
+            router.back();
+          },
+        },
+        {
+          text: "Save Draft",
+          onPress: async () => {
+            await writeDraft({
+              savedAt: new Date().toISOString(),
+              currentStep,
+              selectedAccountId,
+              formData,
+            });
+            router.back();
+          },
+        },
+      ]
+    );
+  }, [createdCampaignId, currentStep, selectedAccountId, formData]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      // Pehle step par ho to normal back, warna pichhle step par jao
+      // On step 1 let back behave normally, otherwise step backwards
       if (currentStep > 1 && !createdCampaignId) {
         setCurrentStep((prev) => prev - 1);
         return true;
@@ -409,21 +585,21 @@ export default function CreateCampaignScreen() {
   }, [currentStep, createdCampaignId, confirmDiscard]);
 
   const handleCreateCampaign = async () => {
-    // Campaign step 5 ke "Next" par ban jata hai, "Confirm & Send" se pehle.
-    // Agar start fail ho aur user peeche jaakar dobara Next dabaye, to pehle
-    // yahan naya create chalta tha - aur backend "campaign already exists"
-    // de deta tha. Ab pehle se bana hua campaign reuse karte hain.
+    // The campaign is created on step 5's "Next", before "Confirm & Send".
+    // If starting failed and the user went back and pressed Next again, this
+    // used to create a second one and the backend answered "campaign already
+    // exists". It now reuses the campaign that was already created.
     if (createdCampaignId) {
       setCurrentStep(6);
 
-      // Estimate refresh kar lo - audience badli ho sakti hai
+      // Refresh the estimate - the audience may have changed
       if (formData.scheduleType === "now") {
         try {
           setLoadingEstimate(true);
           const estRes = await campaignsApi.estimateCost(createdCampaignId);
           setWalletEstimate(estRes.data?.data);
         } catch {
-          // estimate optional hai
+          // the estimate is optional
         } finally {
           setLoadingEstimate(false);
         }
@@ -497,6 +673,9 @@ export default function CreateCampaignScreen() {
 
       setCreatedCampaignId(campaignId);
 
+      // It exists on the server now, so the on-device draft is obsolete
+      await clearDraft();
+
       // Fetch wallet estimate
       if (formData.scheduleType === "now") {
         try {
@@ -565,11 +744,10 @@ export default function CreateCampaignScreen() {
         },
       ]);
     } catch (err: any) {
-      // handleApiError use karo, sirf response.data.message nahi. Interceptor
-      // network/timeout errors ko plain object bana kar reject karta hai
-      // (jisme .response hota hi nahi), to asli wajah - 'Request timed out.'
-      // ya 'No internet connection.' - yahan gayab ho jati thi aur user ko
-      // sirf bemtlab ka 'Failed to start' dikhta tha.
+      // Use handleApiError, not just response.data.message. The interceptor
+      // rejects network/timeout errors as a plain object with no .response,
+      // so the real reason - 'Request timed out.' or 'No internet connection.'
+      // - was lost here and the user only saw a useless 'Failed to start'.
       const msg = handleApiError(err, "Failed to start");
       if (msg && typeof msg === "string" && msg.includes("WALLET_")) {
         Alert.alert("Wallet Balance Low", "Please top up your wallet", [
@@ -580,8 +758,8 @@ export default function CreateCampaignScreen() {
           },
         ]);
       } else {
-        // Campaign already ban chuka hai - user ko batao ki wo gaya nahi,
-        // warna wo dobara poora flow chalata hai aur "already exists" milta hai
+        // The campaign was already created - tell the user it is not lost,
+        // otherwise they redo the whole flow and hit "already exists"
         Alert.alert(
           "Could not start campaign",
           msg +

@@ -32,7 +32,10 @@ export function ActiveWalletView({
 }: Props) {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
 
-  const isLowBalance = walletData.balance < walletData.lowBalanceThreshold;
+  // Reserved paisa kharch nahi ho sakta, isliye "low" ka faisla available par
+  // hona chahiye - warna sab reserved hote hue bhi wallet bhara dikhta hai
+  const isLowBalance =
+    walletData.availableBalance < walletData.lowBalanceThreshold;
   const monthlyPercent =
     walletData.maxMonthlyTopUp > 0
       ? (walletData.currentMonthTopUp / walletData.maxMonthlyTopUp) * 100
@@ -79,9 +82,14 @@ export function ActiveWalletView({
           </View>
 
           {/* Amount */}
+          {/* Label "Available Balance" hai to value bhi available honi chahiye.
+              Pehle yahan poora balance dikhta tha, aur neeche details mein wahi
+              label available balance ke saath - do alag numbers, ek hi naam.
+              Campaign chalte waqt paisa reserve hota hai to lagta tha amount
+              apne aap ghat-badh raha hai. */}
           <Text style={styles.balanceAmount}>
             ₹
-            {walletData.balance.toLocaleString("en-IN", {
+            {walletData.availableBalance.toLocaleString("en-IN", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}
@@ -89,7 +97,8 @@ export function ActiveWalletView({
 
           {walletData.reservedBalance > 0 && (
             <Text style={styles.reservedText}>
-              ₹{walletData.reservedBalance.toFixed(2)} reserved
+              ₹{walletData.reservedBalance.toFixed(2)} reserved &middot; ₹
+              {walletData.balance.toFixed(2)} total
             </Text>
           )}
 

@@ -809,6 +809,26 @@ export interface BusinessProfile {
 export const meta = {
   getAccounts: () => api.get<ApiResponse>("/meta/accounts"),
 
+  // Embedded Signup ke liye appId / configId / redirect URIs.
+  // Server se lete hain taaki client aur server kabhi alag na pade.
+  getSignupConfig: () =>
+    api.get<
+      ApiResponse<{
+        appId: string;
+        configId: string;
+        graphApiVersion: string;
+        mobileSignupUrl: string;
+        mobileAppScheme: string;
+      }>
+    >("/meta/config"),
+
+  connect: (data: {
+    code: string;
+    organizationId: string;
+    wabaId?: string;
+    phoneNumberId?: string;
+  }) => api.post<ApiResponse>("/meta/connect", data),
+
   getBusinessProfile: (accountId: string) =>
     api.get<ApiResponse<BusinessProfile>>(
       `/meta/accounts/${accountId}/business-profile`

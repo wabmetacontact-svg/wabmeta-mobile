@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
   ScrollView,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -48,6 +49,8 @@ export default function NotificationsScreen() {
     deleteNotification,
     markAllAsRead,
     clearAll,
+    pushStatus,
+    pushError,
   } = useNotifications();
 
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
@@ -168,6 +171,35 @@ export default function NotificationsScreen() {
         )}
       </View>
 
+      {/* Push kaam nahi kar raha to chup mat raho - wajah dikhao.
+          Pehle ye sirf console.warn me jata tha, isliye user ko bas itna
+          dikhta tha ki notifications aa hi nahi rahe. */}
+      {pushStatus !== "idle" && pushStatus !== "registered" && (
+        <View style={styles.pushWarn}>
+          <Ionicons
+            name="notifications-off-outline"
+            size={18}
+            color={Colors.warning}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pushWarnTitle}>
+              Push notifications are off
+            </Text>
+            <Text style={styles.pushWarnText}>
+              {pushError || "This device cannot receive push notifications yet."}
+            </Text>
+            {pushStatus === "denied" && (
+              <TouchableOpacity
+                onPress={() => Linking.openSettings()}
+                style={styles.pushWarnBtn}
+              >
+                <Text style={styles.pushWarnBtnText}>Open Settings</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Segmented Tabs (All Alerts vs Unread) */}
       <View style={styles.tabsWrapper}>
         <View style={styles.tabsContainer}>
@@ -263,6 +295,34 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
+  pushWarn: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 13,
+    borderRadius: 12,
+    backgroundColor: Colors.warning + "15",
+    borderWidth: 1,
+    borderColor: Colors.warning + "35",
+  },
+  pushWarnTitle: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  pushWarnText: { fontSize: 12.5, color: Colors.textSecondary, lineHeight: 17 },
+  pushWarnBtn: {
+    alignSelf: "flex-start",
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: Colors.warning,
+  },
+  pushWarnBtnText: { fontSize: 12.5, fontWeight: "700", color: "#fff" },
   container: {
     flex: 1,
     backgroundColor: "#F5F7FA", // Clean standard light background

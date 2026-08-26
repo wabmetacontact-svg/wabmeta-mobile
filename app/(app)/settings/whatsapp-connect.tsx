@@ -1,42 +1,140 @@
 // app/(app)/settings/whatsapp-connect.tsx
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+import * as Crypto from "expo-crypto";
+import { meta as metaApi } from "../../../src/services/api";
+import { handleApiError } from "../../../src/services/api";
 import { Colors } from "../../../src/constants/colors";
 import { useAuth } from "../../../src/context/AuthContext";
 import { useFeatureLock } from "../../../src/hooks/useFeatureLock";
 import { LockedFeatureView } from "../../../src/components/common/LockedFeatureView";
 
-const SETTINGS_URL = "https://wabmeta.com/dashboard/settings";
-
 export default function WhatsAppConnectScreen() {
   const { organization } = useAuth();
   const connectionLocked = useFeatureLock("connection");
 
-  const handleOpenBrowser = async () => {
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
+
+  // Pehle ye screen sirf Chrome me web dashboard khol deti thi - user ko
+  // wahan dobara login karke poora setup browser me karna padta tha.
+  //
+  // Meta ka Embedded Signup sirf Facebook ke JS SDK se chalta hai
+  // ("Embedded Signup relies on the JavaScript SDK"), jo React Native me
+  // chal nahi sakta. Isliye ek chhota bridge page hai jo wahi FB.login
+  // flow chalata hai aur code ko wapas app par deep-link karta hai.
+  //
+  // Wo page in-app browser me khulta hai (alag Chrome tab nahi), usme
+  // WabMeta ka login nahi maanga jata, aur khatam hote hi apne aap band
+  // ho kar app me wapas le aata hai.
+  const handleConnect = async () => {
+    if (!organization?.id) {
+      Alert.alert("Error", "Organization not found. Please sign in again.");
+      return;
+    }
+
+    setBusy(true);
+    setProgress("Preparing Meta setup…");
+
     try {
-      const canOpen = await Linking.canOpenURL(SETTINGS_URL);
-      if (canOpen) {
-        await Linking.openURL(SETTINGS_URL);
-        router.back();
-      } else {
-        Alert.alert(
-          "Open Web Dashboard",
-          `Please visit ${SETTINGS_URL} in your browser to connect WhatsApp.`
+      const cfgRes = await metaApi.getSignupConfig();
+      const cfg = cfgRes.data?.data;
+
+      if (!cfg?.appId || !cfg?.configId) {
+        throw new Error(
+          "WhatsApp signup is not configured on the server yet. Please contact support."
         );
       }
-    } catch (err) {
-      console.error("Error opening URL:", err);
-      Alert.alert("Error", "Failed to open browser");
+
+      // CSRF guard - jo state bheja wahi wapas aana chahiye
+      const state = Crypto.randomUUID();
+
+      const authUrl =
+        `${cfg.mobileSignupUrl}` +
+        `?app_id=${encodeURIComponent(cfg.appId)}` +
+        `&config_id=${encodeURIComponent(cfg.configId)}` +
+        `&redirect=${encodeURIComponent(cfg.mobileAppScheme)}` +
+        `&state=${encodeURIComponent(state)}` +
+        `&version=${encodeURIComponent(cfg.graphApiVersion || "v22.0")}`;
+
+      setProgress("Opening Meta setup…");
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        authUrl,
+        cfg.mobileAppScheme
+      );
+
+      if (result.type !== "success" || !result.url) {
+        // User ne band kar diya - ye error nahi hai
+        setBusy(false);
+        setProgress("");
+        return;
+      }
+
+      const returned = new URL(result.url);
+      const code = returned.searchParams.get("code");
+      const returnedState = returned.searchParams.get("state");
+      const oauthError =
+        returned.searchParams.get("error_description") ||
+        returned.searchParams.get("error");
+
+      // User ne wizard band kar diya - ye galti nahi hai
+      if (oauthError === "cancelled") {
+        setBusy(false);
+        setProgress("");
+        return;
+      }
+
+      if (oauthError) throw new Error(oauthError);
+      if (!code) throw new Error("Meta did not return an authorization code.");
+
+      if (returnedState && returnedState !== state) {
+        throw new Error("Security check failed. Please try again.");
+      }
+
+      setProgress("Connecting your WhatsApp Business Account…");
+
+      const res = await metaApi.connect({
+        code,
+        organizationId: organization.id,
+        // Bridge page ne postMessage se ye pakde hain. Na milen to
+        // backend khud Graph API se dhoondh leta hai.
+        wabaId: returned.searchParams.get("waba_id") || undefined,
+        phoneNumberId: returned.searchParams.get("phone_number_id") || undefined,
+      });
+
+      if (res.data?.success === false) {
+        throw new Error(res.data?.message || "Connection failed");
+      }
+
+      const warning = (res.data?.data as any)?.warning;
+
+      Alert.alert(
+        "WhatsApp Connected",
+        warning === "PHONE_NOT_REGISTERED"
+          ? "Your number is connected but not fully activated yet. Finish the remaining steps in Meta Business Manager."
+          : "Your WhatsApp Business account is now connected.",
+        [{ text: "Done", onPress: () => router.back() }]
+      );
+    } catch (err: any) {
+      Alert.alert(
+        "Could not connect",
+        handleApiError(err, "Something went wrong. Please try again.")
+      );
+    } finally {
+      setBusy(false);
+      setProgress("");
     }
   };
 
@@ -91,30 +189,41 @@ export default function WhatsAppConnectScreen() {
             <Text style={styles.stepsTitle}>Quick Steps:</Text>
             <View style={styles.stepItem}>
               <Text style={styles.stepNumber}>1.</Text>
-              <Text style={styles.stepText}>Tap "Open in Browser" below.</Text>
+              <Text style={styles.stepText}>
+                Tap "Get Started" — Meta's setup opens right here.
+              </Text>
             </View>
             <View style={styles.stepItem}>
               <Text style={styles.stepNumber}>2.</Text>
               <Text style={styles.stepText}>
-                Log in and tap "Connect WhatsApp with Meta".
+                Sign in to Facebook and pick your WhatsApp Business number.
               </Text>
             </View>
             <View style={styles.stepItem}>
               <Text style={styles.stepNumber}>3.</Text>
               <Text style={styles.stepText}>
-                Return to this app — your connected account will appear automatically!
+                That's it — you come straight back and the account is connected.
               </Text>
             </View>
           </View>
 
           <TouchableOpacity
-            style={styles.connectBtn}
-            onPress={handleOpenBrowser}
+            style={[styles.connectBtn, busy && { opacity: 0.7 }]}
+            onPress={handleConnect}
             activeOpacity={0.8}
+            disabled={busy}
           >
-            <Ionicons name="open-outline" size={20} color="#fff" />
-            <Text style={styles.connectBtnText}>Open in Browser</Text>
+            {busy ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+            )}
+            <Text style={styles.connectBtnText}>
+              {busy ? "Connecting…" : "Get Started"}
+            </Text>
           </TouchableOpacity>
+
+          {!!progress && <Text style={styles.progressText}>{progress}</Text>}
         </View>
       </View>
 
@@ -241,6 +350,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 14,
     gap: 8,
+  },
+  progressText: {
+    marginTop: 12,
+    fontSize: 12.5,
+    color: Colors.textSecondary,
+    textAlign: "center",
   },
   connectBtnText: {
     color: "#fff",
