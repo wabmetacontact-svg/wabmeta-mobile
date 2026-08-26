@@ -63,6 +63,11 @@ export default function InboxScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [filter, setFilter] = useState<FilterTab>("all");
 
+  // Socket callbacks ki dependency list khali hai, isliye unhe filter ka
+  // taaza value ref se hi mil sakta hai.
+  const filterRef = useRef<FilterTab>("all");
+  filterRef.current = filter;
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ═══════════════════════════════════
@@ -169,9 +174,26 @@ export default function InboxScreen() {
       const convId = newMsg.conversationId;
       if (!convId) return;
 
+      // Refetch ka faisla state updater ke BAAHAR - updater side-effect
+      // free rehna chahiye.
+      let needsRefetch = false;
+
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === convId);
-        if (idx === -1) return prev;
+
+        if (idx === -1) {
+          // Chat abhi ki list me hai hi nahi. Pehle yahan kuch nahi hota
+          // tha, isliye naya inbound message "Unread" tab me kabhi aata hi
+          // nahi tha - wo sirf "All" me dikhta tha jab tak user khud
+          // refresh na kare.
+          needsRefetch = newMsg.direction === "INBOUND";
+          return prev;
+        }
+
+        const nextUnread =
+          newMsg.direction === "INBOUND"
+            ? (prev[idx].unreadCount || 0) + 1
+            : prev[idx].unreadCount;
 
         const updated = [...prev];
         updated[idx] = {
@@ -183,23 +205,39 @@ export default function InboxScreen() {
           lastMessageAt: newMsg.createdAt || new Date().toISOString(),
           lastMessageType: newMsg.type,
           lastMessageDirection: newMsg.direction,
-          unreadCount:
-            newMsg.direction === "INBOUND"
-              ? (updated[idx].unreadCount || 0) + 1
-              : updated[idx].unreadCount,
+          unreadCount: nextUnread,
+          isRead: (nextUnread || 0) === 0,
         };
         return sortConversations(updated);
       });
+
+      if (needsRefetch) fetchConversations();
     }, []),
 
     // Conversation update
     useCallback((update: ConversationUpdate) => {
       if (!update?.id) return;
+
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === update.id);
         if (idx === -1) return prev;
+
+        const currentFilter = filterRef.current;
+        const merged = { ...prev[idx], ...update };
+
+        // "Unread" tab me padhi hui chat nahi rehni chahiye. Pehle filter
+        // ka yahan koi khayal hi nahi tha, isliye chat kholne ke baad bhi
+        // wo Unread me padi rehti thi aur tab dheere dheere "All" jaisa
+        // dikhne lagta tha.
+        const stillUnread =
+          (merged as any).isRead === false || (merged.unreadCount ?? 0) > 0;
+
+        if (currentFilter === "unread" && !stillUnread) {
+          return sortConversations(prev.filter((c) => c.id !== update.id));
+        }
+
         const updated = [...prev];
-        updated[idx] = { ...updated[idx], ...update };
+        updated[idx] = merged;
         return sortConversations(updated);
       });
     }, []),

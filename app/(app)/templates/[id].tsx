@@ -172,6 +172,7 @@ export default function TemplateDetailScreen() {
     APPROVED: { color: Colors.success, label: "Approved", icon: "checkmark-circle" as const },
     PENDING: { color: Colors.warning, label: "Pending Review", icon: "time" as const },
     REJECTED: { color: Colors.error, label: "Rejected", icon: "close-circle" as const },
+    PAUSED: { color: Colors.warning, label: "Paused by Meta", icon: "pause-circle" as const },
     DRAFT: { color: Colors.textMuted, label: "Draft", icon: "document" as const },
   }[template.status] || {
     color: Colors.textMuted,

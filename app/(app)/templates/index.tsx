@@ -54,6 +54,14 @@ const STATUS_FILTERS: {
     color: Colors.error,
     icon: "close-circle",
   },
+  {
+    // Meta quality gir jane par template rok deta hai. Ye REJECTED se alag
+    // hai - PAUSED apne aap wapas aa sakta hai.
+    value: "PAUSED",
+    label: "Paused",
+    color: Colors.warning,
+    icon: "pause-circle",
+  },
   // "Draft" yahan se hata diya. TemplateStatus enum me sirf PENDING,
   // APPROVED aur REJECTED hain - DRAFT hai hi nahi. Us filter par tap
   // karne se ?status=DRAFT jata tha, backend Zod use reject karta tha
