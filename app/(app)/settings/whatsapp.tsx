@@ -575,12 +575,49 @@ function AccountCard({
   const quality = getQualityConfig(account.qualityRating);
   const verify = getVerificationConfig(account.codeVerificationStatus);
 
+  // Meta ne rok lagayi hai to sabse upar dikhao - warna user campaign chala
+  // kar sochta rehta hai ki uska hi kuch galat hai, jabki Meta ne exact
+  // wajah batayi hoti hai.
+  const blocked = account.healthCanSend === "BLOCKED";
+  const limited = account.healthCanSend === "LIMITED";
+  const healthNote = account.healthBlockedReason;
+
   const phoneDisplay = account.phoneNumber?.startsWith("+")
     ? account.phoneNumber
     : `+${account.phoneNumber}`;
 
   return (
     <View style={styles.accountCard}>
+      {(blocked || (limited && !!healthNote)) && (
+        <View
+          style={[
+            styles.healthBanner,
+            blocked ? styles.healthBannerBlocked : styles.healthBannerLimited,
+          ]}
+        >
+          <Ionicons
+            name={blocked ? "alert-circle" : "information-circle"}
+            size={17}
+            color={blocked ? Colors.error : Colors.warning}
+          />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[
+                styles.healthTitle,
+                { color: blocked ? Colors.error : Colors.warning },
+              ]}
+            >
+              {blocked
+                ? "Cannot send campaigns"
+                : "Sending is limited"}
+            </Text>
+            {!!healthNote && (
+              <Text style={styles.healthText}>{healthNote}</Text>
+            )}
+          </View>
+        </View>
+      )}
+
       {/* Header */}
       <View style={styles.accountHeader}>
         <View style={styles.accountHeaderLeft}>
@@ -1001,6 +1038,26 @@ const styles = StyleSheet.create({
   },
 
   // Account Card
+  healthBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 9,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  healthBannerBlocked: {
+    backgroundColor: Colors.error + "12",
+    borderColor: Colors.error + "35",
+  },
+  healthBannerLimited: {
+    backgroundColor: Colors.warning + "12",
+    borderColor: Colors.warning + "35",
+  },
+  healthTitle: { fontSize: 13, fontWeight: "700", marginBottom: 2 },
+  healthText: { fontSize: 12.5, color: Colors.textSecondary, lineHeight: 17 },
+
   accountCard: {
     backgroundColor: Colors.surface,
     marginHorizontal: 16,

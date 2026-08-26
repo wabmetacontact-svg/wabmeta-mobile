@@ -275,8 +275,8 @@ export default function CallingSettingsScreen() {
                   <Text style={styles.rowLabel}>Limit calls to set hours</Text>
                   <Text style={styles.rowDesc}>
                     {callHoursEnabled
-                      ? "Call button sirf in hours mein dikhega"
-                      : "Off — call button 24/7 dikhega"}
+                      ? "The call button only shows during these hours"
+                      : "Off — the call button shows 24/7"}
                   </Text>
                 </View>
                 <Switch

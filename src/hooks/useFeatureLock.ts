@@ -22,15 +22,15 @@ const FEATURE_LABEL: Record<LockableFeature, string> = {
 
 const FEATURE_DESCRIPTION: Record<LockableFeature, string> = {
   inbox:
-    "Live chat inbox aapke current plan mein shamil nahi hai. Upgrade karke apne customers se real-time baat karein.",
+    "Live chat inbox is not included in your current plan. Upgrade to talk to your customers in real time.",
   campaigns:
-    "Bulk campaigns aapke current plan mein shamil nahi hai. Upgrade karke hazaaron contacts tak ek saath pahunchein.",
+    "Bulk campaigns are not included in your current plan. Upgrade to reach thousands of contacts at once.",
   chatbot:
-    "Chatbot builder aapke current plan mein shamil nahi hai. Upgrade karke replies automate karein.",
+    "The chatbot builder is not included in your current plan. Upgrade to automate your replies.",
   automation:
-    "Automation workflows aapke current plan mein shamil nahi hai. Upgrade karke follow-ups apne aap chalayein.",
+    "Automation workflows are not included in your current plan. Upgrade to run follow-ups automatically.",
   connection:
-    "WhatsApp account connect karna aapke current plan mein shamil nahi hai. Upgrade karke apna number jodein.",
+    "Connecting a WhatsApp account is not included in your current plan. Upgrade to add your number.",
 };
 
 export const featureLabel = (feature: LockableFeature) =>

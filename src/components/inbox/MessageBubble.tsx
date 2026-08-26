@@ -373,7 +373,7 @@ export const MessageBubble = React.memo(function MessageBubble({
           style={styles.videoFallback}
           onPress={() => {
             if (!src) {
-              Alert.alert("Video", "Video abhi available nahi hai");
+              Alert.alert("Video", "This video is no longer available");
               return;
             }
             setShowVideoPlayer(true);
@@ -897,7 +897,7 @@ function AudioPlayer({
       timeLabel="00:00"
       onPress={() => {
         if (!mediaSrc) {
-          Alert.alert("Audio", "Audio abhi available nahi hai");
+          Alert.alert("Audio", "This audio is no longer available");
           return;
         }
         setStarted(true);

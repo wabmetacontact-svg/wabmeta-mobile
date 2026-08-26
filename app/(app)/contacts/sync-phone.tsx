@@ -151,7 +151,7 @@ export default function SyncPhoneContactsScreen() {
       setSelected(new Set(list.map((c) => c.key)));
     } catch (err: any) {
       console.error("Load phone contacts error:", err);
-      Alert.alert("Error", "Phone contacts load nahi ho paye");
+      Alert.alert("Error", "Could not load your phone contacts");
     } finally {
       setLoading(false);
     }
@@ -243,7 +243,7 @@ export default function SyncPhoneContactsScreen() {
       } catch (err: any) {
         failed += batch.length;
         if (!batchError) {
-          batchError = handleApiError(err, "Kuch contacts import nahi ho paye");
+          batchError = handleApiError(err, "Some contacts could not be imported");
         }
       }
 
@@ -283,7 +283,7 @@ export default function SyncPhoneContactsScreen() {
 
     Alert.alert(
       "Import contacts",
-      `${count} contact${count === 1 ? "" : "s"} aapke WabMeta contacts mein add honge. Jo pehle se hain wo skip ho jayenge.`,
+      `${count} contact${count === 1 ? "" : "s"} will be added to your WabMeta contacts. Anyone already saved will be skipped.`,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Import", onPress: runImport },

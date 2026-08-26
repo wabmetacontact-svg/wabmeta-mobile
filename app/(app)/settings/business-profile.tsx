@@ -147,7 +147,7 @@ export default function BusinessProfileScreen() {
     if (!permission.granted) {
       Alert.alert(
         "Permission needed",
-        "Photo access chahiye taaki profile picture choose kar sakein."
+        "Photo access is needed so you can choose a profile picture."
       );
       return;
     }
@@ -214,7 +214,7 @@ export default function BusinessProfileScreen() {
       Alert.alert(
         "Submitted for review",
         res.data?.message ||
-          "Display name Meta ke review ke liye bhej diya gaya hai."
+          "Your display name has been submitted to Meta for review."
       );
       fetchProfile();
     } catch (err: any) {

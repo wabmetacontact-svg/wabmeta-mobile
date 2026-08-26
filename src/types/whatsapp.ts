@@ -14,6 +14,14 @@ export interface WhatsAppAccount {
   isDefault: boolean;
   codeVerificationStatus: string | null;
   nameStatus?: string | null;
+
+  // Meta ka health_status. Yahi ek jagah hai jahan wo saaf batata hai ki
+  // number business-initiated messages (templates/campaigns) bhej sakta hai
+  // ya nahi - aur na bhej sakne par asli wajah kya hai (payment method,
+  // banned WABA, business verification, OTP pending).
+  healthCanSend?: "AVAILABLE" | "LIMITED" | "BLOCKED" | "UNKNOWN" | null;
+  healthBlockedReason?: string | null;
+  healthCheckedAt?: string | null;
   dailyMessageLimit?: number;
   dailyMessagesUsed?: number;
   // Backend se aate hain (meta.service getMessagingUsage).
