@@ -50,15 +50,26 @@ const getMessagingTierLabel = (
     if (status === "PENDING") return "Not available yet";
     return "Syncing...";
   }
+  // Meta ne 1K ko 2K se badal diya tha aur naye tiers jodte rehta hai.
+  // Missing entry par raw "TIER_2K" dikh jata tha.
   const tierMap: Record<string, string> = {
     TIER_50: "50/day",
     TIER_250: "250/day",
     TIER_1K: "1K/day",
+    TIER_2K: "2K/day",
+    TIER_5K: "5K/day",
     TIER_10K: "10K/day",
+    TIER_20K: "20K/day",
+    TIER_50K: "50K/day",
     TIER_100K: "100K/day",
     TIER_UNLIMITED: "Unlimited",
   };
-  return tierMap[tier] || tier;
+  if (tierMap[tier]) return tierMap[tier];
+
+  // Anjaan tier bhi padhne layak dikhe
+  const m = /^TIER_(\d+)(K|M)?$/i.exec(tier);
+  if (m) return `${m[1]}${m[2] ? m[2].toUpperCase() : ""}/day`;
+  return tier;
 };
 
 const getVerificationConfig = (status: string | null) => {

@@ -8,11 +8,6 @@
     "scheme": "wabmeta",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-    "splash": {
-      "image": "./assets/images/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#075E54"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -28,7 +23,8 @@
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#075E54"
+        "monochromeImage": "./assets/images/monochrome-icon.png",
+        "backgroundColor": "#FDFDFD"
       },
       "package": "com.wabmeta.app",
       "versionCode": 1,
@@ -90,6 +86,19 @@
         "expo-contacts",
         {
           "contactsPermission": "WabMeta needs access to your contacts so you can import them into your contact list."
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#FDFDFD",
+          "dark": {
+            "image": "./assets/images/splash-icon-dark.png",
+            "backgroundColor": "#111B21"
+          }
         }
       ]
     ],
