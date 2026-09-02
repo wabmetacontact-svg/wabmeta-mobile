@@ -63,6 +63,7 @@ export default function SyncPhoneContactsScreen() {
   const [permission, setPermission] = useState<
     "unknown" | "granted" | "denied"
   >("unknown");
+  const [needsDisclosure, setNeedsDisclosure] = useState(false);
   const [loading, setLoading] = useState(true);
   const [deviceContacts, setDeviceContacts] = useState<PhoneContact[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -75,13 +76,23 @@ export default function SyncPhoneContactsScreen() {
   // LOAD DEVICE CONTACTS
   // ═══════════════════════════════════
 
-  const loadContacts = useCallback(async () => {
+  // Contacts device se nikal kar hamare server par upload hote hain, aur
+  // Play ki policy ke hisaab se aise case me system prompt kholne se PEHLE
+  // apni ek disclosure screen dikhani padti hai jisme user mana bhi kar
+  // sake. Isliye pehli baar sirf status check hota hai - prompt tabhi
+  // khulta hai jab user disclosure par "Continue" dabaye (mayPrompt=true).
+  const loadContacts = useCallback(async (mayPrompt = false) => {
     setLoading(true);
 
     try {
       let { status } = await getPermissionsAsync();
 
       if (status !== "granted") {
+        if (!mayPrompt) {
+          setNeedsDisclosure(true);
+          setLoading(false);
+          return;
+        }
         ({ status } = await requestPermissionsAsync());
       }
 
@@ -341,7 +352,34 @@ export default function SyncPhoneContactsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {loading ? (
+      {needsDisclosure ? (
+        <View style={styles.centered}>
+          <Ionicons name="people-circle-outline" size={44} color={Colors.primary} />
+          <Text style={styles.centeredTitle}>Before we read your contacts</Text>
+          <Text style={styles.centeredText}>
+            WabMeta collects the names, phone numbers and email addresses from
+            your phone's contact list, and uploads the ones you select to your
+            WabMeta workspace so you can message them.
+          </Text>
+          <Text style={styles.centeredText}>
+            You choose exactly which contacts are imported on the next screen.
+            Nothing is uploaded until you tap Import, and you can delete them
+            from your workspace at any time.
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            onPress={() => {
+              setNeedsDisclosure(false);
+              loadContacts(true);
+            }}
+          >
+            <Text style={styles.primaryBtnText}>Continue</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.retryLink}>
+            <Text style={styles.retryLinkText}>Not now</Text>
+          </TouchableOpacity>
+        </View>
+      ) : loading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.centeredText}>Reading your contacts...</Text>
@@ -351,9 +389,9 @@ export default function SyncPhoneContactsScreen() {
           <Ionicons name="lock-closed" size={40} color={Colors.textMuted} />
           <Text style={styles.centeredTitle}>Contacts permission needed</Text>
           <Text style={styles.centeredText}>
-            WabMeta ko aapke phone contacts padhne ki permission chahiye taaki
-            unhe import kiya ja sake. Ye contacts sirf aapke workspace mein
-            add hote hain.
+            WabMeta needs permission to read your phone contacts so it can
+            import them. The contacts you select are added only to your own
+            workspace.
           </Text>
           <TouchableOpacity
             style={styles.primaryBtn}
@@ -365,7 +403,7 @@ export default function SyncPhoneContactsScreen() {
           >
             <Text style={styles.primaryBtnText}>Open Settings</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={loadContacts} style={styles.retryLink}>
+          <TouchableOpacity onPress={() => loadContacts(true)} style={styles.retryLink}>
             <Text style={styles.retryLinkText}>Try again</Text>
           </TouchableOpacity>
         </View>

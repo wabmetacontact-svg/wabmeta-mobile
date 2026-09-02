@@ -258,7 +258,6 @@ export default function DashboardScreen() {
   const fetchStats = useCallback(async () => {
     try {
       const res = await dashboard.getStats();
-      console.log("📊 Stats response:", JSON.stringify(res.data, null, 2));
 
       if (res?.data?.success && res?.data?.data) {
         setStats(res.data.data as DashboardStats);
@@ -273,7 +272,6 @@ export default function DashboardScreen() {
   const fetchWidgets = useCallback(async () => {
     try {
       const res = await dashboard.getWidgets(7);
-      console.log("📈 Widgets response:", JSON.stringify(res.data, null, 2));
 
       if (res?.data?.success && res?.data?.data) {
         setWidgets(res.data.data as WidgetData);
@@ -289,7 +287,6 @@ export default function DashboardScreen() {
     try {
       // ✅ Add getActivity to api.ts if not present
       const res = await dashboard.getActivity?.(10);
-      console.log("📝 Activity response:", JSON.stringify(res?.data, null, 2));
 
       if (res?.data?.success && Array.isArray(res?.data?.data)) {
         setActivity(res.data.data);
@@ -304,7 +301,6 @@ export default function DashboardScreen() {
   const fetchWallet = useCallback(async () => {
     try {
       const res = await wallet.getWallet();
-      console.log("💰 Wallet response:", JSON.stringify(res.data, null, 2));
 
       if (res?.data?.success && res?.data?.data) {
         const data = res.data.data as any;

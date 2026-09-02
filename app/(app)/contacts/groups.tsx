@@ -43,7 +43,6 @@ export default function ContactGroupsScreen() {
   const fetchGroups = useCallback(async () => {
     try {
       const res = await contactsApi.getGroups();
-      console.log("📁 Groups response:", JSON.stringify(res.data, null, 2));
 
       if (res?.data?.success && res?.data?.data) {
         const data = res.data.data;

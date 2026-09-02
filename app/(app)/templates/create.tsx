@@ -378,7 +378,6 @@ export default function CreateTemplateScreen() {
         payload.buttons = formData.buttons;
       }
 
-      console.log("📤 Creating template:", payload);
 
       let res;
       if (isEditMode) {

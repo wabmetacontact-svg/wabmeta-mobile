@@ -18,16 +18,22 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
+import { Modal } from "../../../src/components/common/Modal";
 import { users as usersApi } from "../../../src/services/api";
 import { useAuth } from "../../../src/context/AuthContext";
 import { Colors } from "../../../src/constants/colors";
 
 export default function ProfileScreen() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, logout } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: user?.firstName || user?.name?.split(" ")[0] || "",
@@ -187,6 +193,39 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  // Play Store ki policy hai ki account banane wali app me deletion ka ek
+  // chalta-hua raasta app ke andar hi hona chahiye. Pehle ye button sirf
+  // "Coming Soon" alert deta tha jo user ko web dashboard bhejta tha - aur
+  // web wala /data-deletion page wapas app ki taraf bhejta tha, matlab koi
+  // raasta tha hi nahi. Backend me DELETE /users/account pehle se maujood
+  // hai, isliye ab yahan se seedha wahi call hota hai.
+  const confirmDeleteAccount = async () => {
+    if (!deletePassword.trim()) {
+      setDeleteError("Enter your password to confirm.");
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await usersApi.deleteAccount(deletePassword);
+      setShowDeleteModal(false);
+      // logout() storage aur caches saaf karke login par bhej deta hai
+      await logout();
+    } catch (err: any) {
+      // Backend do wajah se mana karta hai: galat password, ya user aisi
+      // organization ka owner hai jisme aur members bhi hain
+      setDeleteError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Could not delete your account. Please try again."
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Poora page block karne ke bajay header turant dikhta hai aur
@@ -385,7 +424,11 @@ export default function ProfileScreen() {
             <Text style={styles.dangerTitle}>Danger Zone</Text>
             <TouchableOpacity
               style={styles.deleteBtn}
-              onPress={() => Alert.alert("Coming Soon", "Account deletion must be done from the web dashboard for security reasons.")}
+              onPress={() => {
+                setDeletePassword("");
+                setDeleteError(null);
+                setShowDeleteModal(true);
+              }}
             >
               <Ionicons name="trash" size={18} color={Colors.error} />
               <Text style={styles.deleteText}>Delete Account</Text>
@@ -396,6 +439,58 @@ export default function ProfileScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
       )}
+
+      <Modal
+        visible={showDeleteModal}
+        onClose={() => !deleting && setShowDeleteModal(false)}
+        title="Delete Account"
+      >
+        <Text style={styles.deleteModalText}>
+          This permanently deletes your account, contacts, conversations,
+          campaigns and your WhatsApp connection. It happens immediately and
+          cannot be undone.
+        </Text>
+
+        <Text style={styles.deleteModalLabel}>Confirm your password</Text>
+        <TextInput
+          style={styles.deleteModalInput}
+          value={deletePassword}
+          onChangeText={(t) => {
+            setDeletePassword(t);
+            setDeleteError(null);
+          }}
+          placeholder="Password"
+          placeholderTextColor={Colors.textMuted}
+          secureTextEntry
+          autoCapitalize="none"
+          editable={!deleting}
+        />
+
+        {deleteError ? (
+          <Text style={styles.deleteModalError}>{deleteError}</Text>
+        ) : null}
+
+        <View style={styles.deleteModalActions}>
+          <TouchableOpacity
+            style={styles.deleteModalCancel}
+            onPress={() => setShowDeleteModal(false)}
+            disabled={deleting}
+          >
+            <Text style={styles.deleteModalCancelText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.deleteModalConfirm, deleting && { opacity: 0.6 }]}
+            onPress={confirmDeleteAccount}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.deleteModalConfirmText}>Delete forever</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -623,5 +718,65 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "700",
+  },
+
+  deleteModalText: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: Colors.textSecondary,
+    marginBottom: 18,
+  },
+  deleteModalLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: Colors.textPrimary,
+    marginBottom: 6,
+  },
+  deleteModalInput: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: Colors.textPrimary,
+    backgroundColor: Colors.surfaceSecondary,
+  },
+  deleteModalError: {
+    marginTop: 10,
+    fontSize: 13,
+    color: Colors.error,
+  },
+  deleteModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 22,
+  },
+  deleteModalCancel: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: Colors.textSecondary,
+  },
+  deleteModalConfirm: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 10,
+    backgroundColor: Colors.error,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  deleteModalConfirmText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
   },
 });

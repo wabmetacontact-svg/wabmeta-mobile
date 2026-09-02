@@ -45,3 +45,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Play Store submit key aur Firebase service account key - ye secrets hain,
+# kabhi commit mat karo
+google-service-account.json
+firebase-service-account.json
+
+# NOTE: google-services.json / GoogleService-Info.plist ko jaan bujh kar
+# ignore NAHI kiya hai. Unme sirf public identifiers hote hain, aur EAS
+# build sirf git me tracked files hi upload karta hai - ignore kar diya to
+# wo file build me pahunchti hi nahi aur FCM chup-chaap fail ho jata hai.

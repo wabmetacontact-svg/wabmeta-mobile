@@ -664,7 +664,6 @@ export default function CreateCampaignScreen() {
         scheduledAt,
       };
 
-      console.log("📤 Creating campaign:", payload);
 
       const res = await campaignsApi.create(payload);
       const campaignId = res.data?.data?.id;

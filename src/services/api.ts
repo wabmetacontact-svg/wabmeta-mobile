@@ -1091,6 +1091,11 @@ export const users = {
   getStats: () => api.get<ApiResponse>("/users/stats"),
   getSessions: () => api.get<ApiResponse>("/users/sessions"),
   revokeSession: (id: string) => api.delete<ApiResponse>(`/users/sessions/${id}`),
+  // Account turant aur hamesha ke liye delete hota hai - backend user aur
+  // uske owned organizations dono ko cascade ke saath hata deta hai.
+  // DELETE request me body axios ko `data` ke andar chahiye hoti hai.
+  deleteAccount: (password: string, reason?: string) =>
+    api.delete<ApiResponse>("/users/account", { data: { password, reason } }),
 };
 
 export const billing = {

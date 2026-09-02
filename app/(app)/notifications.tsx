@@ -50,7 +50,6 @@ export default function NotificationsScreen() {
     markAllAsRead,
     clearAll,
     pushStatus,
-    pushError,
   } = useNotifications();
 
   const [activeTab, setActiveTab] = useState<"all" | "unread">("all");
@@ -171,10 +170,16 @@ export default function NotificationsScreen() {
         )}
       </View>
 
-      {/* Push kaam nahi kar raha to chup mat raho - wajah dikhao.
-          Pehle ye sirf console.warn me jata tha, isliye user ko bas itna
-          dikhta tha ki notifications aa hi nahi rahe. */}
-      {pushStatus !== "idle" && pushStatus !== "registered" && (
+      {/* Banner sirf "denied" par dikhta hai - wahi ek haalat hai jo user
+          khud theek kar sakta hai.
+
+          Baaki failures (FCM configure nahi hai, project id nahi mila,
+          Expo Go) developer ki problem hain. Pehle inke liye bhi banner
+          aata tha aur usme raw error chhap jata tha - "Firebase (FCM) is
+          not configured for this build" - jo customer ke liye bekaar hai
+          aur app ko toota hua dikhata hai. Wajah ab bhi pushError me
+          rehti hai aur dev console me warn hoti hai. */}
+      {pushStatus === "denied" && (
         <View style={styles.pushWarn}>
           <Ionicons
             name="notifications-off-outline"
@@ -186,16 +191,15 @@ export default function NotificationsScreen() {
               Push notifications are off
             </Text>
             <Text style={styles.pushWarnText}>
-              {pushError || "This device cannot receive push notifications yet."}
+              Turn on notifications for WabMeta to get alerts about new
+              customer messages and campaign results.
             </Text>
-            {pushStatus === "denied" && (
-              <TouchableOpacity
-                onPress={() => Linking.openSettings()}
-                style={styles.pushWarnBtn}
-              >
-                <Text style={styles.pushWarnBtnText}>Open Settings</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity
+              onPress={() => Linking.openSettings()}
+              style={styles.pushWarnBtn}
+            >
+              <Text style={styles.pushWarnBtnText}>Open Settings</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}

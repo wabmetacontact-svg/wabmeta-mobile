@@ -238,7 +238,6 @@ export default function WhatsAppSettingsScreen() {
 
   useEffect(() => {
     const handleDeepLink = (event: { url: string }) => {
-      console.log("🔗 Deep link received:", event.url);
 
       if (event.url.includes("meta-connected")) {
         // Refresh accounts

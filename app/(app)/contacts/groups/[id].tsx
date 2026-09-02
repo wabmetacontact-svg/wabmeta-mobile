@@ -54,7 +54,6 @@ export default function GroupContactsScreen() {
         if (search.trim()) params.search = search.trim();
 
         const res = await contactsApi.getAll(params);
-        console.log("👥 Group contacts response:", JSON.stringify(res.data, null, 2));
 
         if (res?.data?.success !== false && (res?.data?.data || Array.isArray(res?.data))) {
           const rawData = res.data?.data ?? res.data;
