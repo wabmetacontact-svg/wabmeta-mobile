@@ -1,31 +1,19 @@
-import { useEffect } from "react";
-import { View, ActivityIndicator } from "react-native";
-import { router } from "expo-router";
+import { Redirect } from "expo-router";
 import { useAuth } from "../src/context/AuthContext";
+import { AppLoading } from "../src/components/common/AppLoading";
 
 export default function Index() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  useEffect(() => {
-    if (isLoading) return;
-
-    if (isAuthenticated) {
-      router.replace("/(app)/(tabs)");
-    } else {
-      router.replace("/(auth)/login");
-    }
-  }, [isAuthenticated, isLoading]);
+  // Pehle yahan useEffect ke andar router.replace() tha. Wo imperative call
+  // tab silently drop ho jati hai jab root navigator abhi mount nahi hua -
+  // aur screen isi placeholder par atak jati thi. <Redirect> declarative hai:
+  // expo-router use tab tak hold karta hai jab tak navigate karna safe na ho.
+  if (isLoading) {
+    return <AppLoading />;
+  }
 
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#075E54",
-      }}
-    >
-      <ActivityIndicator size="large" color="#ffffff" />
-    </View>
+    <Redirect href={isAuthenticated ? "/(app)/(tabs)" : "/(auth)/login"} />
   );
 }

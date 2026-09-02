@@ -66,6 +66,10 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Local storage padhne me itna time bilkul nahi lagna chahiye - ye sirf
+// tab bachata hai jab native module hi jawab dena band kar de
+const SESSION_RESTORE_TIMEOUT_MS = 8000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganizationState] = useState<Organization | null>(null);
@@ -78,6 +82,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isInitialized.current) return;
     isInitialized.current = true;
     restoreSession();
+
+    // Safety net: agar storage read kisi wajah se kabhi resolve hi na ho
+    // (SecureStore ka native call latak jaye), to app hamesha ke liye
+    // loading screen par phans jayegi. Utna intezaar karne ke baad
+    // logged-out maan kar aage badh jao - login screen dikhna kam se kam
+    // ek jammed spinner se behtar hai.
+    const failsafe = setTimeout(() => {
+      setIsLoading((stillLoading) => {
+        if (stillLoading) {
+          console.warn("Session restore timed out - continuing logged out");
+        }
+        return false;
+      });
+    }, SESSION_RESTORE_TIMEOUT_MS);
+
+    return () => clearTimeout(failsafe);
   }, []);
 
   useEffect(() => {
@@ -96,42 +116,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Server se latest user aur org le aao. Ye startup ko block nahi karta -
+  // pehle cached session se app khul jati hai, fresh data baad me aa kar
+  // chupchap replace ho jata hai.
+  const refreshFromServer = async () => {
+    const [userResult, orgResult] = await Promise.allSettled([
+      authApi.me(),
+      // Feature locks admin panel se badalte hain. Sirf login ke waqt saved
+      // org rakhne se user ko dobara login kiye bina naya plan nahi dikhta,
+      // isliye startup par org refresh kar lete hain.
+      orgApi.getCurrent(),
+    ]);
+
+    if (userResult.status === "fulfilled") {
+      const freshUser = userResult.value.data?.data;
+      if (freshUser) {
+        setUser(freshUser as User);
+        await AuthStorage.saveUser(freshUser);
+      }
+    }
+    // Fail hone par cached user hi chalta rahega (offline / flaky network)
+
+    if (orgResult.status === "fulfilled") {
+      const freshOrg = orgResult.value.data?.data;
+      if (freshOrg?.id) {
+        setOrganizationState(freshOrg as Organization);
+        await AuthStorage.saveOrg(freshOrg);
+      }
+    }
+    // Fail hone par cached org se hi kaam chalao
+  };
+
   const restoreSession = async () => {
     try {
-      const accessToken = await AuthStorage.getAccessToken();
-      const storedUser = await AuthStorage.getUser<User>();
-      const storedOrg = await AuthStorage.getOrg<Organization>();
+      const [accessToken, storedUser, storedOrg] = await Promise.all([
+        AuthStorage.getAccessToken(),
+        AuthStorage.getUser<User>(),
+        AuthStorage.getOrg<Organization>(),
+      ]);
 
-      if (!accessToken || !storedUser) {
-        setIsLoading(false);
-        return;
-      }
+      if (!accessToken || !storedUser) return;
 
       setUser(storedUser);
       if (storedOrg) setOrganizationState(storedOrg);
 
-      try {
-        const response = await authApi.me();
-        const freshUser = response.data.data;
-        setUser(freshUser as User);
-        await AuthStorage.saveUser(freshUser);
-      } catch {
-        // Keep offline cached user if temporary failure
-      }
-
-      // Feature locks admin panel se badalte hain. Sirf login ke waqt saved
-      // org rakhne se user ko dobara login kiye bina naya plan nahi dikhta,
-      // isliye startup par org refresh kar lete hain.
-      try {
-        const orgRes = await orgApi.getCurrent();
-        const freshOrg = orgRes.data?.data;
-        if (freshOrg?.id) {
-          setOrganizationState(freshOrg as Organization);
-          await AuthStorage.saveOrg(freshOrg);
-        }
-      } catch {
-        // Cached org se hi kaam chalao
-      }
+      // Jaan bujh kar await nahi kar rahe. Pehle yahan me() aur
+      // getCurrent() dono await hote the - dono par 30s ka axios timeout
+      // hai, to slow ya dead network par app poore 60 second loading
+      // screen par atak jati thi. Cached session pehle se maujood hai,
+      // isliye UI turant khol do aur refresh background me hone do.
+      void refreshFromServer().catch(() => {});
     } catch (err) {
       console.error("Session restore error:", err);
     } finally {
